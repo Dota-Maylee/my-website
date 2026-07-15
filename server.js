@@ -5,8 +5,24 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS 中间件（支持前端跨域请求在线人数）
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  next();
+});
+
 const io = new Server(server, {
-  cors: { origin: ['https://dota-maylee.github.io','http://localhost:3000'], methods: ['GET', 'POST'] },
+  cors: { 
+    origin: ['https://dota-maylee.github.io', 'http://localhost:3000'], 
+    methods: ['GET', 'POST'] 
+  },
   pingTimeout: 60000,
   pingInterval: 25000
 });
@@ -14,6 +30,7 @@ const io = new Server(server, {
 const rooms = new Map();
 const matchmaking = new Map();
 const matchmakingTimeouts = new Map();
+let onlineCount = 0;
 
 function generateRoomCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -30,7 +47,15 @@ function getRoomPublic(room) {
   };
 }
 
+// 在线人数 API
+app.get('/api/online', (req, res) => {
+  res.json({ count: onlineCount });
+});
+
 io.on('connection', (socket) => {
+  onlineCount++;
+  io.emit('online_count', onlineCount);
+  
   socket.on('create_room', ({ name, maxPlayers, mode }) => {
     const code = generateRoomCode();
     const room = {
@@ -65,6 +90,7 @@ io.on('connection', (socket) => {
     io.to(code).emit('game_started', { players: playerIds.map(p => ({ id: p.gameId, name: p.name, isAI: p.isAI })), roomCode: code });
   });
 
+  // 重写：服务器端统一 5 秒定时器
   socket.on('join_matchmaking', ({ name, maxPlayers, mode }) => {
     const key = `${maxPlayers}-${mode}`;
     if (!matchmaking.has(key)) matchmaking.set(key, []);
@@ -74,11 +100,9 @@ io.on('connection', (socket) => {
     queue.push(socket);
     socket.matchKey = key;
     
-    // 广播当前匹配人数给所有排队玩家
     queue.forEach(s => s.emit('matchmaking_waiting', { current: queue.length, required: maxPlayers }));
     
     if (queue.length >= maxPlayers) {
-      // 人数满了，立即开始
       if (matchmakingTimeouts.has(key)) {
         clearTimeout(matchmakingTimeouts.get(key));
         matchmakingTimeouts.delete(key);
@@ -96,8 +120,10 @@ io.on('connection', (socket) => {
         s.roomCode = code;
         s.emit('match_found', { code, room: getRoomPublic(room), you: s.id });
       });
-    } else if (queue.length === 1 && !matchmakingTimeouts.has(key)) {
-      // 第一个玩家加入，启动5秒服务器端定时器
+    } else if (queue.length === 1) {
+      if (matchmakingTimeouts.has(key)) {
+        clearTimeout(matchmakingTimeouts.get(key));
+      }
       const timeout = setTimeout(() => {
         const currentQueue = matchmaking.get(key) || [];
         if (currentQueue.length === 0) return;
@@ -121,15 +147,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('cancel_matchmaking', () => {
-    if (socket.matchKey && matchmaking.has(socket.matchKey)) {
-      const queue = matchmaking.get(socket.matchKey);
-      const idx = queue.findIndex(s => s.id === socket.id);
-      if (idx > -1) {
-        queue.splice(idx, 1);
-        // 如果队列空了，清除定时器
-        if (queue.length === 0 && matchmakingTimeouts.has(socket.matchKey)) {
-          clearTimeout(matchmakingTimeouts.get(socket.matchKey));
-          matchmakingTimeouts.delete(socket.matchKey);
+    if (socket.matchKey) {
+      if (matchmaking.has(socket.matchKey)) {
+        const queue = matchmaking.get(socket.matchKey);
+        const idx = queue.findIndex(s => s.id === socket.id);
+        if (idx > -1) {
+          queue.splice(idx, 1);
+          if (queue.length === 0 && matchmakingTimeouts.has(socket.matchKey)) {
+            clearTimeout(matchmakingTimeouts.get(socket.matchKey));
+            matchmakingTimeouts.delete(socket.matchKey);
+          }
         }
       }
     }
@@ -151,14 +178,19 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    if (socket.matchKey && matchmaking.has(socket.matchKey)) {
-      const queue = matchmaking.get(socket.matchKey);
-      const idx = queue.findIndex(s => s.id === socket.id);
-      if (idx > -1) {
-        queue.splice(idx, 1);
-        if (queue.length === 0 && matchmakingTimeouts.has(socket.matchKey)) {
-          clearTimeout(matchmakingTimeouts.get(socket.matchKey));
-          matchmakingTimeouts.delete(socket.matchKey);
+    onlineCount--;
+    io.emit('online_count', onlineCount);
+    
+    if (socket.matchKey) {
+      if (matchmaking.has(socket.matchKey)) {
+        const queue = matchmaking.get(socket.matchKey);
+        const idx = queue.findIndex(s => s.id === socket.id);
+        if (idx > -1) {
+          queue.splice(idx, 1);
+          if (queue.length === 0 && matchmakingTimeouts.has(socket.matchKey)) {
+            clearTimeout(matchmakingTimeouts.get(socket.matchKey));
+            matchmakingTimeouts.delete(socket.matchKey);
+          }
         }
       }
     }
@@ -182,18 +214,12 @@ io.on('connection', (socket) => {
   });
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-
 const PORT = process.env.PORT || 3000;
-// Vercel 环境下不主动 listen，由平台托管
-if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`========================================`);
-    console.log(`🎮 宿舍杀服务器已启动`);
-    console.log(`📍 端口: ${PORT}`);
-    console.log(`========================================`);
-  });
-}
+server.listen(PORT, () => {
+  console.log(`========================================`);
+  console.log(`🎮 宿舍杀服务器已启动`);
+  console.log(`📍 端口: ${PORT}`);
+  console.log(`========================================`);
+});
 
-// 导出给 Vercel Serverless 使用
 module.exports = server;
