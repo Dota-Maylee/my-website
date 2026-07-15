@@ -142,9 +142,15 @@ io.on('connection', (socket) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log('========================================');
-  console.log('🎮 宿舍杀服务器已启动');
-  console.log('📍 端口:', PORT);
-  console.log('========================================');
-});
+// Vercel 环境下不主动 listen，由平台托管
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`========================================`);
+    console.log(`🎮 宿舍杀服务器已启动`);
+    console.log(`📍 端口: ${PORT}`);
+    console.log(`========================================`);
+  });
+}
+
+// 导出给 Vercel Serverless 使用
+module.exports = server;
