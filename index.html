@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>宿舍杀 · 在线版</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        :root {
+            --bg: #0a0a0f; --bg-day: #151520; --card: #16162a; --card-hover: #1e1e3a;
+            --text: #e2e8f0; --text-dim: #94a3b8; --wolf: #e94560; --witch: #a855f7;
+            --knight: #3b82f6; --magician: #ec4899; --god: #fbbf24; --alive: #10b981;
+            --dead: #64748b; --border: #2d2d44;
+        }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+        .screen { display: none; animation: fadeIn 0.4s ease; }
+        .screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .corner-btn { position: fixed; top: 20px; right: 20px; width: 44px; height: 44px; background: var(--card); border: 2px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; color: var(--god); cursor: pointer; z-index: 1000; transition: transform 0.2s; -webkit-appearance: none; }
+        .corner-btn:hover { background: var(--card-hover); transform: scale(1.1); }
+        .mode-toggle { position: fixed; top: 20px; left: 20px; padding: 10px 18px; background: var(--card); border: 2px solid var(--border); border-radius: 12px; color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; z-index: 1000; transition: all 0.2s; display: flex; align-items: center; gap: 8px; -webkit-appearance: none; }
+        .mode-toggle:hover { background: var(--card-hover); }
+        .mode-toggle.wolf-mode { border-color: var(--wolf); color: var(--wolf); background: rgba(233, 69, 96, 0.1); }
+        @media (hover: hover) and (pointer: fine) {
+            .mode-toggle:hover { border-color: var(--wolf); }
+        }
+        .login-box { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 48px 40px; width: 100%; max-width: 420px; text-align: center; }
+        .login-box h1 { font-size: 42px; margin-bottom: 8px; background: linear-gradient(135deg, var(--wolf), var(--witch)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .login-box p { color: var(--text-dim); margin-bottom: 32px; }
+        .input-field { width: 100%; padding: 14px 18px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-size: 16px; margin-bottom: 16px; outline: none; transition: border-color 0.2s; -webkit-appearance: none; }
+        .input-field:focus { border-color: var(--witch); }
+        .btn { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--wolf), #c0392b); border: none; border-radius: 12px; color: white; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s, opacity 0.2s; -webkit-appearance: none; touch-action: manipulation; }
+        .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+        .btn:active { transform: translateY(0); opacity: 0.8; }
+        .btn-secondary { background: var(--card); border: 1px solid var(--border); color: var(--text); margin-top: 12px; }
+        .btn-secondary:hover { background: var(--card-hover); }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; width: 100%; max-width: 900px; margin-top: 20px; }
+        .menu-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 32px; cursor: pointer; transition: transform 0.3s; text-align: center; }
+        .menu-card:hover { transform: translateY(-4px); border-color: var(--witch); background: var(--card-hover); }
+        .menu-card .icon { font-size: 48px; margin-bottom: 16px; }
+        .menu-card h3 { font-size: 20px; margin-bottom: 8px; }
+        .menu-card p { color: var(--text-dim); font-size: 14px; }
+        .player-count { display: flex; gap: 16px; margin: 24px 0; justify-content: center; }
+        .count-option { width: 64px; height: 64px; background: var(--card); border: 2px solid var(--border); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; cursor: pointer; transition: transform 0.2s; }
+        .count-option.selected { border-color: var(--wolf); background: rgba(233, 69, 96, 0.1); color: var(--wolf); }
+        .count-option:hover:not(.selected) { border-color: var(--text-dim); }
+        .waiting-box { text-align: center; max-width: 400px; }
+        .spinner { width: 48px; height: 48px; border: 3px solid var(--border); border-top-color: var(--god); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 24px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .room-code { background: var(--bg); padding: 12px 24px; border-radius: 12px; font-family: monospace; font-size: 24px; letter-spacing: 4px; margin: 16px 0; border: 1px dashed var(--border); }
+        #screen-game.active { display: grid; grid-template-rows: auto auto auto; grid-template-columns: 1fr; grid-template-areas: "header" "main" "action"; gap: 16px; padding: 20px; max-width: 800px; margin: 0 auto; width: 100%; min-height: 100vh; align-content: start; align-items: start; }
+        .game-header { grid-area: header; display: flex; justify-content: space-between; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px 24px; flex-wrap: wrap; gap: 8px; }
+        .phase-badge { padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+        .phase-night { background: rgba(168, 85, 247, 0.15); color: var(--witch); }
+        .phase-day { background: rgba(251, 191, 36, 0.2); color: var(--god); }
+        .game-main { grid-area: main; display: flex; flex-direction: column; gap: 16px; }
+        .panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+        .panel h3 { font-size: 14px; color: var(--text-dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        .broadcast-item { padding: 12px 16px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--wolf); font-size: 15px; display: flex; align-items: center; gap: 8px; animation: slideIn 0.4s ease; }
+        .broadcast-item.no-death { border-left-color: var(--alive); color: var(--alive); }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        .player-list { display: flex; flex-direction: column; gap: 8px; }
+        .player-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: var(--bg); transition: transform 0.3s ease, opacity 0.3s ease; border: 2px solid transparent; }
+        .player-item.dead { opacity: 0.4; filter: grayscale(0.8); }
+        .player-item.current { border-color: var(--god); box-shadow: 0 0 20px rgba(251, 191, 36, 0.25); }
+        .player-item.newly-dead { border: 4px solid #ff2d55 !important; background: rgba(255, 45, 85, 0.35) !important; box-shadow: 0 0 40px rgba(255, 45, 85, 0.7), inset 0 0 24px rgba(255, 45, 85, 0.25) !important; animation: flashDead 0.6s ease-in-out infinite alternate; position: relative; z-index: 2; }
+        @keyframes flashDead { 0% { box-shadow: 0 0 12px rgba(255, 45, 85, 0.4), inset 0 0 12px rgba(255, 45, 85, 0.15); border-color: #ff2d55; background: rgba(255, 45, 85, 0.25); } 100% { box-shadow: 0 0 48px rgba(255, 45, 85, 0.9), inset 0 0 28px rgba(255, 45, 85, 0.35); border-color: #ff8fa3; background: rgba(255, 45, 85, 0.5); } }
+        .player-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; background: var(--border); flex-shrink: 0; }
+        .player-avatar.wolf { background: rgba(233, 69, 96, 0.2); color: var(--wolf); }
+        .player-avatar.witch { background: rgba(168, 85, 247, 0.2); color: var(--witch); }
+        .player-avatar.knight { background: rgba(59, 130, 246, 0.2); color: var(--knight); }
+        .player-avatar.magician { background: rgba(236, 72, 153, 0.2); color: var(--magician); }
+        .player-avatar.unknown { background: var(--border); color: var(--text-dim); }
+        .player-info { flex: 1; min-width: 0; }
+        .player-name { font-weight: 600; word-break: break-all; }
+        .player-status { font-size: 12px; color: var(--text-dim); }
+        .action-area { grid-area: action; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px; text-align: center; position: relative; }
+        .action-title { font-size: 20px; margin-bottom: 20px; }
+        .action-sub { color: var(--text-dim); margin-bottom: 24px; font-size: 14px; }
+        .countdown-timer { position: absolute; top: 16px; right: 20px; width: 48px; height: 48px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--text); transition: all 0.3s ease; z-index: 5; }
+        .countdown-timer.warning { border-color: var(--wolf); color: var(--wolf); animation: pulse 1s ease-in-out infinite; }
+        .countdown-timer.danger { border-color: #ff2d55; color: #ff2d55; animation: pulse 0.5s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .identity-select { display: flex; gap: 20px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+        .identity-card { width: 140px; height: 180px; background: var(--bg); border: 2px solid var(--border); border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: transform 0.3s; }
+        .identity-card:hover { transform: scale(1.05); }
+        .identity-card.wolf:hover, .identity-card.wolf.selected { border-color: var(--wolf); background: rgba(233, 69, 96, 0.1); }
+        .identity-card.witch:hover, .identity-card.witch.selected { border-color: var(--witch); background: rgba(168, 85, 247, 0.1); }
+        .identity-card.knight:hover, .identity-card.knight.selected { border-color: var(--knight); background: rgba(59, 130, 246, 0.1); }
+        .identity-card.magician:hover, .identity-card.magician.selected { border-color: var(--magician); background: rgba(236, 72, 153, 0.1); }
+        .identity-card .id-icon { font-size: 48px; }
+        .identity-card .id-name { font-weight: 700; font-size: 18px; }
+        .action-panel { display: flex; flex-direction: column; gap: 20px; align-items: center; }
+        .action-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; }
+        .action-label { font-size: 16px; font-weight: 600; min-width: 80px; text-align: right; }
+        .toggle-btn { padding: 10px 20px; background: var(--bg); border: 2px solid var(--border); border-radius: 12px; color: var(--text-dim); cursor: pointer; transition: transform 0.2s; font-size: 14px; -webkit-appearance: none; touch-action: manipulation; }
+        .toggle-btn.active { border-color: var(--wolf); color: var(--wolf); background: rgba(233, 69, 96, 0.1); }
+        .toggle-btn.active.witch-btn { border-color: var(--witch); color: var(--witch); background: rgba(168, 85, 247, 0.1); }
+        .toggle-btn.active.knight-btn { border-color: var(--knight); color: var(--knight); background: rgba(59, 130, 246, 0.1); }
+        .toggle-btn.active.magician-btn { border-color: var(--magician); color: var(--magician); background: rgba(236, 72, 153, 0.1); }
+        .target-grid { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .target-btn { width: 64px; height: 64px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s; display: flex; align-items: center; justify-content: center; flex-direction: column; -webkit-appearance: none; touch-action: manipulation; }
+        .target-btn:hover { border-color: var(--text-dim); transform: scale(1.1); }
+        .target-btn.selected { border-color: var(--god); background: rgba(251, 191, 36, 0.1); }
+        .target-btn.dead { opacity: 0.3; cursor: not-allowed; pointer-events: none; background: #0f0f1a; border-color: #1a1a2e; color: #4a4a6a; }
+        .end-screen { text-align: center; max-width: 700px; }
+        .winner-title { font-size: 48px; margin-bottom: 16px; background: linear-gradient(135deg, var(--god), #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .log-viewer { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-top: 24px; text-align: left; max-height: 400px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .log-entry { padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+        .log-entry:last-child { border-bottom: none; }
+        .log-phase { color: var(--god); font-weight: 600; margin-bottom: 4px; }
+        .log-action { color: var(--text-dim); margin-left: 12px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.85); display: none; align-items: center; justify-content: center; z-index: 3000; padding: 20px; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 32px; max-width: 780px; width: 100%; max-height: 85vh; overflow-y: auto; -webkit-overflow-scrolling: touch; position: relative; }
+        .modal-content h2 { margin-bottom: 20px; font-size: 24px; color: var(--god); }
+        .modal-content h3 { margin: 20px 0 10px; color: var(--god); font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+        .modal-content p, .modal-content li { color: var(--text-dim); line-height: 1.8; margin-bottom: 8px; }
+        .modal-content ul { margin-left: 20px; }
+        .modal-content .highlight { color: var(--text); font-weight: 600; }
+        .modal-content .wolf-text { color: var(--wolf); }
+        .modal-content .witch-text { color: var(--witch); }
+        .modal-content .knight-text { color: var(--knight); }
+        .modal-content .magician-text { color: var(--magician); }
+        .modal-content .god-text { color: var(--god); }
+        .modal-content .step-box { background: var(--bg); border-radius: 12px; padding: 16px 20px; margin: 8px 0 16px 0; border-left: 4px solid var(--god); }
+        .modal-content .step-box .step-title { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+        .modal-close { position: fixed; top: 20px; right: 20px; width: 48px; height: 48px; background: var(--card); border: 2px solid var(--border); border-radius: 12px; color: var(--wolf); font-size: 28px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 4000; transition: transform 0.2s, background 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.3); -webkit-appearance: none; }
+        .modal-close:hover { transform: scale(1.1); background: var(--card-hover); border-color: var(--wolf); }
+        .privacy-mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; animation: fadeIn 0.3s ease; }
+        .privacy-mask.hidden { display: none; }
+        .privacy-mask .mask-icon { font-size: 64px; margin-bottom: 16px; }
+        .privacy-mask .mask-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+        .privacy-mask .mask-sub { color: var(--text-dim); margin-bottom: 24px; font-size: 14px; }
+        .privacy-mask .mask-warning { background: rgba(233, 69, 96, 0.1); border: 1px solid var(--wolf); color: var(--wolf); padding: 12px 20px; border-radius: 12px; font-size: 14px; margin-bottom: 24px; max-width: 400px; }
+        .privacy-mask .btn-reveal { background: linear-gradient(135deg, var(--god), #f59e0b); color: #000; font-weight: 700; max-width: 220px; }
+        .local-player-list { display: flex; flex-direction: column; gap: 12px; margin: 20px 0; width: 100%; }
+        .local-player-row { display: flex; align-items: center; gap: 12px; background: var(--bg); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border); }
+        .local-player-row .player-index { width: 32px; height: 32px; border-radius: 50%; background: var(--card); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: var(--god); border: 1px solid var(--border); flex-shrink: 0; }
+        .special-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-left: 8px; }
+        .badge-double-knife { background: rgba(233, 69, 96, 0.2); color: var(--wolf); border: 1px solid var(--wolf); }
+        .badge-double-bet { background: rgba(59, 130, 246, 0.2); color: var(--knight); border: 1px solid var(--knight); }
+        .badge-bounce-used { background: rgba(236, 72, 153, 0.2); color: var(--magician); border: 1px solid var(--magician); }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; margin-left: 6px; }
+        .status-badge.alive { background: rgba(16, 185, 129, 0.15); color: var(--alive); }
+        .status-badge.dead { background: rgba(100, 116, 139, 0.15); color: var(--dead); }
+        .hidden { display: none !important; }
+        @media (max-width: 768px) { 
+            .menu-grid { grid-template-columns: 1fr; } 
+            .identity-select { flex-direction: row; justify-content: center; flex-wrap: wrap; } 
+            .game-header { flex-direction: column; align-items: stretch; text-align: center; } 
+            .login-box { padding: 32px 20px; }
+            .action-area { padding: 20px 16px; }
+            .modal-content { padding: 20px; max-height: 80vh; }
+            .modal-close { top: 10px; right: 10px; width: 40px; height: 40px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="mode-toggle" id="mode-toggle" onclick="toggleGameMode()">🐺 普通模式</div>
+    <div class="corner-btn" onclick="toggleRules()">?</div>
+    <div id="screen-login" class="screen active">
+        <div class="login-box">
+            <h1>宿舍杀</h1><p>2-4人 · 策略生存</p>
+            <input type="text" id="username" class="input-field" placeholder="输入你的名字" maxlength="12" autocapitalize="off" autocomplete="off" autocorrect="off">
+            <button class="btn" onclick="doLogin()">进入游戏</button>
+        </div>
+    </div>
+    <div id="screen-menu" class="screen">
+        <div style="text-align:center;margin-bottom:20px;">
+            <h1 style="font-size:32px;margin-bottom:8px;">选择模式</h1>
+            <p style="color:var(--text-dim);"><span id="menu-username"></span></p>
+        </div>
+        <div class="menu-grid">
+            <div class="menu-card" onclick="selectMode('ai')"><div class="icon">🤖</div><h3>人机对战</h3><p>与AI玩家对战，练习策略</p></div>
+            <div class="menu-card" onclick="selectMode('match')"><div class="icon">🌐</div><h3>在线匹配</h3><p>匹配真人玩家，超时AI补位</p></div>
+            <div class="menu-card" onclick="selectMode('room')"><div class="icon">🏠</div><h3>房间对战</h3><p>输入房间号，创建或加入</p></div>
+            <div class="menu-card" onclick="selectMode('local')"><div class="icon">👥</div><h3>多人游戏</h3><p>同设备轮流操作，AI上帝</p></div>
+        </div>
+        <button class="btn btn-secondary" style="max-width:200px;margin-top:24px;" onclick="backToLogin()">退出登录</button>
+    </div>
+    <div id="screen-setup" class="screen">
+        <div class="login-box" style="max-width:500px;">
+            <h2 id="setup-title">房间对战</h2>
+            <p id="setup-subtitle" style="color:var(--text-dim);margin:12px 0 24px;">输入房间号，创建或加入房间</p>
+            <div class="player-count" id="player-count">
+                <div class="count-option" data-count="2" onclick="selectCount(2)">2</div>
+                <div class="count-option" data-count="3" onclick="selectCount(3)">3</div>
+                <div class="count-option selected" data-count="4" onclick="selectCount(4)">4</div>
+            </div>
+            <div id="room-code-section" style="margin:16px 0;">
+                <p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">房间号</p>
+                <input type="text" id="room-code-input" class="input-field" placeholder="如 ABC123" maxlength="8" style="text-align:center;font-family:monospace;letter-spacing:2px;font-size:18px;" autocapitalize="off" autocomplete="off" autocorrect="off">
+                <p style="color:var(--text-dim);font-size:12px;margin-top:8px;">新房间号创建，已有房间号加入</p>
+            </div>
+            <div id="local-players-section" style="display:none;margin:16px 0;">
+                <p style="color:var(--text-dim);font-size:14px;margin-bottom:12px;">输入各玩家名字</p>
+                <div class="local-player-list" id="local-player-inputs"></div>
+            </div>
+            <button class="btn" id="setup-btn" onclick="confirmSetup()">进入房间</button>
+            <button class="btn btn-secondary" onclick="backToMenu()">返回</button>
+        </div>
+    </div>
+    <div id="screen-waiting" class="screen">
+        <div class="waiting-box">
+            <div class="spinner"></div>
+            <h2 id="waiting-title">正在匹配...</h2>
+            <p id="waiting-sub" style="color:var(--text-dim);margin-top:8px;">等待其他玩家加入</p>
+            <div id="waiting-room-code" style="display:none;margin-top:20px;">
+                <p style="color:var(--text-dim);font-size:14px;">房间码</p>
+                <div class="room-code" id="waiting-code"></div>
+            </div>
+            <div id="waiting-players" style="margin-top:24px;"></div>
+            <button class="btn" style="margin-top:16px;" id="btn-start-now" onclick="startNow()">立即开始（AI补位）</button>
+            <button class="btn btn-secondary" style="margin-top:12px;" onclick="cancelWaiting()">取消</button>
+        </div>
+    </div>
+    <div id="screen-game" class="screen">
+        <div class="game-header">
+            <div>
+                <span style="font-size:12px;color:var(--text-dim);">宿舍杀</span>
+                <div class="round-info" style="font-size:18px;font-weight:700;margin-top:4px;">第<span id="round-display">零</span><span id="round-suffix">天</span></div>
+            </div>
+            <div class="phase-badge phase-night" id="phase-badge">夜晚</div>
+            <div style="text-align:right;" id="identity-box">
+                <div style="font-size:14px;color:var(--text-dim);">你的身份</div>
+                <div id="my-identity" style="font-weight:700;color:var(--text-dim);">未知</div>
+            </div>
+        </div>
+        <div class="game-main">
+            <div class="panel">
+                <h3>玩家状态</h3>
+                <div class="player-list" id="game-player-list"></div>
+            </div>
+        </div>
+        <div class="action-area" id="action-area">
+            <div class="countdown-timer hidden" id="countdown-timer">60</div>
+            <div id="privacy-mask" class="privacy-mask hidden">
+                <div class="mask-icon">🛡️</div>
+                <div class="mask-title" id="mask-title">隐私保护模式</div>
+                <div class="mask-sub" id="mask-sub">轮到玩家操作</div>
+                <div class="mask-warning" id="mask-warning">⚠️ 其他玩家请回避，确保只有当前玩家能看到屏幕</div>
+                <button class="btn btn-reveal" id="btn-reveal" onclick="revealAction()">准备就绪</button>
+            </div>
+            <div id="action-content"></div>
+        </div>
+    </div>
+    <div id="screen-end" class="screen">
+        <div class="end-screen">
+            <div class="winner-title" id="winner-title">游戏结束</div>
+            <p id="winner-desc" style="color:var(--text-dim);font-size:18px;"></p>
+            <div class="log-viewer" id="full-log"></div>
+            <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;">
+                <button class="btn" style="max-width:200px;" onclick="backToMenu()">返回主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rules-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" onclick="toggleRules()">×</button>
+            <pre style="white-space: pre-wrap; font-family: inherit; color: var(--text); line-height: 1.8; font-size: 15px; margin: 0; overflow-wrap: break-word; word-break: break-word;">
+宿舍杀 · 完整规则
+
+一、基本设定
+  游戏人数为 2 至 4 人，由 AI 担任上帝主持。
+  游戏流程：
+    第零晚：所有玩家按照顺序各自选择身份，随后进行当晚操作。
+    后续白天/夜晚交替：白天公布存活情况，夜晚按照顺序各自进行操作。
+
+二、身份与技能
+  1. 狼人
+    刀：指定一名玩家施加 1 把刀（特殊能力（整局一次）：同一晚对两名不同玩家各施加 1 把刀）。
+    盾：指定一名玩家施加 1 个盾。
+  2. 女巫
+    毒：指定一或二名玩家分别施加 1 瓶毒药（初始拥有 1 瓶毒药，在每个第奇数序号的晚上可增加 1 瓶毒药）。
+    解药：对任意一名玩家使用解药（仅拥有一瓶解药）。
+  3. 骑士
+    赌活：指定其他玩家，猜测该玩家当晚存活。
+    赌死：指定自己，猜测自己当晚死亡。
+    （二选一）（特殊能力（整局一次）：可同时进行赌活与赌死（双赌））
+  4. 魔术师
+    反弹：指定任意一名玩家，当晚所有指向该玩家的刀、盾、毒药、解药都会被反弹回施加者，骑士的赌则直接无效。（仅拥有一次反弹）
+    刀：对任意一名玩家施加 1 把刀。
+    交换：指定任意两名玩家，当晚所有指向他们的刀、盾、毒药、解药、反弹会被施加到对方（初始拥有 1 次交换，在每个第奇数序号的晚上可增加 1 次交换）。
+
+三、结算步骤
+  每晚按以下五步依次结算：
+  第一步：交换与反弹
+    反弹化简：2 反弹 ＝ 0 效果
+    考虑交换和反弹，计算操作与玩家之间的对应关系。
+  第二步：刀盾毒化简
+    对刀、盾与毒药进行化简。
+    化简规则：
+      2 刀 = 1 盾
+      2 盾 = 1 刀
+      1 刀 + 1 盾 = 0 效果
+      2 毒 = 0 效果
+    判定规则：剩余 0 效果、1 盾或 1 刀 + 1 毒时存活；剩余 1 刀、1 毒或 1 盾 + 1 毒时死亡。
+    化简后得到原始存活状态。
+  第三步：解药第一次生效
+    化简：2 解药 ＝ 0 效果
+    化简后所有受到解药的玩家，状态变为存活。
+  第四步：骑士结算
+    每个骑士复制场上状态得到副本，各自独立对副本进行判定：
+      赌活：若目标存活，则使该玩家死亡；若目标死亡，自身死亡，使该玩家存活。
+      赌死：若自身死亡，则使自身存活；若自身存活，第一次无效果，之后自身死亡。
+      （副本内，赌他人活赌错导致的自己死亡，会覆盖赌自己死赌对导致的自己存活）
+    融合：所有骑士的副本修改完毕后，将副本融合起来得到进一步的玩家存活状态。如果存在骑士的状态在自己的副本和他人的副本中不相同的情况，他人的副本中的这个骑士的状态会覆盖掉自己的副本中的自己的状态。
+  第五步：解药第二次生效
+    （化简后）所有受到解药的玩家，状态变为存活。
+
+四、胜利条件
+  常规：最后唯一存活的玩家获胜。
+  多人同时死亡（最后一晚）：
+    同一身份：共同胜利。若均为女巫，则按行动顺序判定第一个行动的女巫胜利。
+    不同身份：胜利优先级为狼人 > 女巫 > 魔术师 > 骑士。
+
+五、信息规则
+  玩家之间不可见彼此的身份、操作等信息，公共信息仅包括游戏进程。
+  游戏结束后开放完整日志，可复盘所有操作。
+            </pre>
+        </div>
+    </div>
+    <script>
+        // ==================== 网络同步层 ====================
+        const SERVER_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : 'https://zoological-cat-production-4101.up.railway.app';
+        let socket = null;
+        let mySocketId = null;
+        let roomPlayersRaw = [];
+        let socketIdToGameId = {};
+
+        function isOnlineMode() {
+            return Game.mode === 'room' || Game.mode === 'match';
+        }
+
+        function initSocket() {
+            if (socket) return;
+            socket = io(SERVER_URL);
+
+            socket.on('connect', () => {
+                console.log('已连接到服务器');
+                mySocketId = socket.id;
+            });
+
+            socket.on('disconnect', () => {
+                console.log('与服务器断开连接');
+            });
+
+            socket.on('error', ({ message }) => {
+                if (message === '房间不存在' && Game.mode === 'room') {
+                    const myName = localStorage.getItem('dormkill_name') || '玩家';
+                    socket.emit('create_room', { 
+                        name: myName, 
+                        maxPlayers: Game.selectedCount, 
+                        mode: Game.wolfKnifeMode ? 'wolf' : 'normal' 
+                    });
+                } else {
+                    alert(message);
+                }
+            });
+
+            socket.on('room_created', ({ code, room }) => {
+                Game.roomCode = code;
+                Game.isHost = true;
+                mySocketId = socket.id;
+                roomPlayersRaw = room.players;
+                Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                showWaiting('room');
+            });
+
+            socket.on('room_joined', ({ code, room, you }) => {
+                Game.isHost = false;
+                mySocketId = you;
+                roomPlayersRaw = room.players;
+                Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                Game.myId = 'p' + room.players.findIndex(p => p.id === you);
+                showWaiting('room');
+            });
+
+            socket.on('player_joined', ({ player, room }) => {
+                roomPlayersRaw = room.players;
+                if ($('screen-waiting').classList.contains('active')) {
+                    Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                    updateWaitingPlayers();
+                }
+            });
+
+            socket.on('match_found', ({ code, room, you }) => {
+                Game.roomCode = code;
+                Game.isHost = (you === room.host);
+                mySocketId = you;
+                roomPlayersRaw = room.players;
+                Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                Game.myId = 'p' + room.players.findIndex(p => p.id === you);
+                showWaiting('room');
+                if (Game.isHost && room.playerCount >= room.maxPlayers) {
+                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 1000);
+                }
+            });
+
+            socket.on('matchmaking_waiting', ({ current, required }) => {
+                $('waiting-sub').textContent = `当前匹配人数 ${current}/${required}...`;
+            });
+
+            socket.on('game_started', ({ players, roomCode }) => {
+                roomPlayersRaw.forEach((p, i) => {
+                    socketIdToGameId[p.id] = 'p' + i;
+                });
+                while (players.length < Game.selectedCount) {
+                    const aiName = 'AI-' + NAMES[(players.length - 1) % NAMES.length];
+                    players.push({ id: 'p' + players.length, name: aiName, isAI: true });
+                }
+                Game.players = players.map((p, i) => createPlayer(p.id, p.name, p.isAI));
+                if (Game.wolfKnifeMode) {
+                    Game.players.forEach(p => { p.identity = 'wolf'; p.usedDoubleKnife = false; });
+                }
+                startGame();
+            });
+
+            socket.on('player_action', ({ from, action, data }) => {
+                const { actionType, playerId, data: actionData } = data;
+                if (actionType === 'select_identity') {
+                    const player = Game.players.find(p => p.id === playerId);
+                    if (player && !player.identity) {
+                        player.identity = actionData.identity;
+                        if (player.identity === 'witch') player.potions = { poison: 1, antidote: 1 };
+                        addGodMsg(`${player.name} 已准备就绪`);
+                        updateGameUI();
+                    }
+                } else if (actionType === 'night_action' || actionType === 'ai_action') {
+                    const player = Game.players.find(p => p.id === playerId);
+                    if (player) {
+                        if (actionData.identity && !player.identity) {
+                            player.identity = actionData.identity;
+                            if (player.identity === 'witch') player.potions = { poison: 1, antidote: 1 };
+                            addGodMsg(`${player.name} 已准备就绪`);
+                        }
+                        Game.operations[playerId] = actionData.operation;
+                        applyOperationCost(player, actionData.operation);
+                        const op = actionData.operation;
+                        const actionDesc = [];
+                        if (player.identity === 'wolf') {
+                            if (op.knife) actionDesc.push(`刀 → ${getPlayerName(op.knife)}`);
+                            if (op.doubleKnife) actionDesc.push(`刀 → ${getPlayerName(op.doubleKnife)}（双刀）`);
+                            if (op.shield) actionDesc.push(`盾 → ${getPlayerName(op.shield)}`);
+                        } else if (player.identity === 'witch') {
+                            if (op.poison) actionDesc.push(`毒 → ${getPlayerName(op.poison)}`);
+                            if (op.poison2) actionDesc.push(`毒 → ${getPlayerName(op.poison2)}（双毒）`);
+                            if (op.antidote) actionDesc.push(`解药 → ${getPlayerName(op.antidote)}`);
+                        } else if (player.identity === 'knight') {
+                            if (op.betAlive) actionDesc.push(`赌活 → ${getPlayerName(op.betAlive)}`);
+                            if (op.betSelfDie) actionDesc.push(`赌死 → 自己`);
+                            if (op.useDoubleBet) actionDesc.push('【双赌】');
+                        } else if (player.identity === 'magician') {
+                            if (op.bounce) actionDesc.push(`反弹护盾 → ${getPlayerName(op.bounce)}`);
+                            if (op.magicianKnife) actionDesc.push(`刀 → ${getPlayerName(op.magicianKnife)}`);
+                            if (op.swapPair) actionDesc.push(`交换 → ${getPlayerName(op.swapPair[0])} ↔ ${getPlayerName(op.swapPair[1])}`);
+                        }
+                        Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
+                        addGodMsg(`${player.name} 操作完毕`);
+                        Game.currentPlayerIdx = actionData.nextIdx;
+                        nextTurn();
+                    }
+                }
+            });
+
+            socket.on('day_result', ({ deaths, round, message }) => {
+                Game.isDay = true;
+                Game.round = round;
+                const results = resolveNight(Game.operations, Game.players);
+                const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
+                Game.players.forEach(p => {
+                    const survived = results[p.id];
+                    if (p.alive && !survived) p.alive = false;
+                });
+                Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
+                Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
+                updateGameUI();
+                showDayActionArea();
+            });
+
+            socket.on('game_state_update', (state) => {
+                if (Game.isHost) return;
+                if (state.type === 'night_start') {
+                    Game.round = state.round;
+                    Game.isDay = state.isDay;
+                    Game.currentPlayerIdx = state.currentPlayerIdx;
+                    Game.operations = state.operations || {};
+                    if (state.players) {
+                        state.players.forEach(sp => {
+                            const player = Game.players.find(p => p.id === sp.id);
+                            if (player) {
+                                player.alive = sp.alive;
+                                player.identity = sp.identity;
+                            }
+                        });
+                    }
+                    addGodMsg(`🌙 进入第${ROUND_NAMES[Game.round] || Game.round}天 夜晚`);
+                    updateGameUI();
+                    nextTurn();
+                }
+            });
+
+            socket.on('player_left', ({ playerId, room }) => {
+                const gameId = socketIdToGameId[playerId];
+                if (gameId && Game.phase === 'playing') {
+                    const player = Game.players.find(p => p.id === gameId);
+                    if (player) {
+                        player.isAI = true;
+                        addGodMsg(`${player.name} 断开连接，由AI接管`);
+                        updateGameUI();
+                        if (Game.isHost && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
+                            setTimeout(() => nextTurn(), 1000);
+                        }
+                    }
+                } else if ($('screen-waiting').classList.contains('active')) {
+                    roomPlayersRaw = room.players;
+                    Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                    updateWaitingPlayers();
+                }
+            });
+
+            socket.on('host_changed', ({ newHost }) => {
+                if (newHost === socket.id) {
+                    Game.isHost = true;
+                    if ($('screen-waiting').classList.contains('active')) {
+                        $('btn-start-now').style.display = 'block';
+                        $('waiting-title').textContent = '等待玩家加入';
+                    }
+                }
+            });
+        }
+
+        function applyOperationCost(player, op) {
+            if (!op) return;
+            if (player.identity === 'witch') {
+                let poisonUsed = 0;
+                if (op.poison) poisonUsed++;
+                if (op.poison2) poisonUsed++;
+                for (let i = 0; i < poisonUsed; i++) {
+                    if (player.extraPoison > 0) player.extraPoison--;
+                    else if (player.potions.poison > 0) player.potions.poison--;
+                }
+                if (op.antidote) player.hasUsedAntidote = true;
+            } else if (player.identity === 'magician') {
+                if (op.bounce) player.hasUsedBounce = true;
+                if (op.swapPair && op.swapPair.length === 2) player.swapCharges--;
+            } else if (player.identity === 'wolf') {
+                if (op.doubleKnife) player.usedDoubleKnife = true;
+            } else if (player.identity === 'knight') {
+                if (op.useDoubleBet) player.usedDoubleBet = true;
+            }
+        }
+
+        function showWaitingAction(msg) {
+            $('action-area').style.display = 'block';
+            const area = $('action-content');
+            area.innerHTML = `<div class="action-title" style="opacity:0.6;">⏳ 等待中</div><div class="action-sub" style="color:var(--text-dim);">${msg}</div><div style="width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--god);border-radius:50%;animation:spin 1s linear infinite;margin:20px auto;"></div>`;
+        }
+
+        // ==================== 原有游戏逻辑（已集成网络同步） ====================
+
+
+        const Game = {
+            phase: 'login', mode: 'ai', roomCode: null, players: [], currentPlayerIdx: 0,
+            round: 0, isDay: false, operations: {}, history: [], godMessages: [],
+            myId: null, selectedIdentity: null, selectedCount: 4, tempOperation: {},
+            gameEnded: false, channel: null, waitingTimer: null, aiPlayers: [],
+            isHost: false, isLocalMultiplayer: false, localPlayerNames: [],
+            localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
+            countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
+            isConfirming: false
+        };
+        const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
+        const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
+        const ROUND_NAMES = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+        function $(id) { return document.getElementById(id); }
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            $(id).classList.add('active');
+            if (id === 'screen-game') updateGameUI();
+        }
+        function toggleRules() { $('rules-modal').classList.toggle('active'); }
+        function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+        function randChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+        function doLogin() {
+            const name = $('username').value.trim() || '游客';
+            localStorage.setItem('dormkill_name', name);
+            $('menu-username').textContent = name;
+            showScreen('screen-menu');
+        }
+        function toggleGameMode() {
+            Game.wolfKnifeMode = !Game.wolfKnifeMode;
+            const btn = $('mode-toggle');
+            if (Game.wolfKnifeMode) {
+                btn.textContent = '🐺 狼刀博弈';
+                btn.classList.add('wolf-mode');
+            } else {
+                btn.textContent = '🐺 普通模式';
+                btn.classList.remove('wolf-mode');
+            }
+        }
+        function backToLogin() {
+            localStorage.removeItem('dormkill_name'); $('username').value = '';
+            showScreen('screen-login');
+        }
+        function backToMenu() { resetGame(); showScreen('screen-menu'); }
+        function selectMode(mode) {
+            Game.mode = mode; Game.isLocalMultiplayer = (mode === 'local');
+            const modeSuffix = Game.wolfKnifeMode ? '（狼刀博弈）' : '';
+            if (mode === 'room') {
+                $('setup-title').textContent = '房间对战' + modeSuffix; $('setup-btn').textContent = '进入房间';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '输入房间号，创建或加入房间';
+                $('room-code-section').style.display = 'block'; $('local-players-section').style.display = 'none';
+                Game.isHost = true;
+            } else if (mode === 'ai') {
+                $('setup-title').textContent = '人机对战' + modeSuffix; $('setup-btn').textContent = '开始游戏';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '选择人数，与AI对战';
+                $('room-code-section').style.display = 'none'; $('local-players-section').style.display = 'none';
+                Game.isHost = true;
+            } else if (mode === 'match') {
+                $('setup-title').textContent = '在线匹配' + modeSuffix; $('setup-btn').textContent = '开始匹配';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '选择人数，匹配玩家（超时AI补位）';
+                $('room-code-section').style.display = 'none'; $('local-players-section').style.display = 'none';
+                Game.isHost = true;
+            } else if (mode === 'local') {
+                $('setup-title').textContent = '多人游戏' + modeSuffix; $('setup-btn').textContent = '开始游戏';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '选择人数并输入各玩家名字';
+                $('room-code-section').style.display = 'none'; $('local-players-section').style.display = 'block';
+                Game.isHost = true; renderLocalPlayerInputs();
+            }
+            showScreen('screen-setup');
+        }
+        function renderLocalPlayerInputs() {
+            const container = $('local-player-inputs'); container.innerHTML = '';
+            for (let i = 0; i < Game.selectedCount; i++) {
+                const row = document.createElement('div'); row.className = 'local-player-row';
+                let defaultVal = Game.localNameCache[i] !== undefined ? Game.localNameCache[i] : (i === 0 ? (localStorage.getItem('dormkill_name') || '') : '');
+                row.innerHTML = `<div class="player-index">P${i+1}</div><input type="text" class="input-field" style="margin:0;flex:1;" placeholder="玩家 ${i+1} 的名字" maxlength="12" id="local-name-${i}" value="${defaultVal}" oninput="updateLocalNameCache(${i}, this.value)" autocapitalize="off" autocomplete="off" autocorrect="off">`;
+                container.appendChild(row);
+            }
+        }
+        function updateLocalNameCache(index, value) { Game.localNameCache[index] = value.trim(); }
+        function generateRoomCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
+        function selectCount(n) {
+            Game.selectedCount = n;
+            document.querySelectorAll('.count-option').forEach(el => el.classList.remove('selected'));
+            document.querySelector(`.count-option[data-count="${n}"]`).classList.add('selected');
+            if (Game.mode === 'local') renderLocalPlayerInputs();
+        }
+        function createPlayer(id, name, isAI) {
+            return { id, name, identity: null, alive: true, isAI, potions: { poison: 0, antidote: 0 },
+                hasUsedAntidote: false, extraPoison: 0, usedDoubleKnife: false, usedDoubleBet: false,
+                usedDoublePoison: false, selfDeathWrongCount: 0, hasUsedBounce: false, swapCharges: 1 };
+        }
+        function confirmSetup() {
+            if (Game.mode === 'local') {
+                for (let i = 0; i < Game.selectedCount; i++) {
+                    const input = $(`local-name-${i}`);
+                    if (input) Game.localNameCache[i] = input.value.trim();
+                }
+                Game.localPlayerNames = [];
+                for (let i = 0; i < Game.selectedCount; i++) Game.localPlayerNames.push(Game.localNameCache[i] || `P${i+1}`);
+                Game.players = Game.localPlayerNames.map((name, idx) => createPlayer('p' + idx, name, false));
+                Game.myId = 'p0';
+                if (Game.wolfKnifeMode) {
+                    Game.players.forEach(p => { p.identity = 'wolf'; p.usedDoubleKnife = false; });
+                }
+                startGame(); return;
+            }
+            const myName = localStorage.getItem('dormkill_name') || '玩家';
+            Game.players = [createPlayer('p0', myName, false)]; Game.myId = 'p0';
+            if (Game.wolfKnifeMode) {
+                Game.players[0].identity = 'wolf'; Game.players[0].usedDoubleKnife = false;
+            }
+            if (Game.mode === 'room') {
+                initSocket();
+                const code = $('room-code-input').value.trim().toUpperCase();
+                if (!code) {
+                    socket.emit('create_room', { name: myName, maxPlayers: Game.selectedCount, mode: Game.wolfKnifeMode ? 'wolf' : 'normal' });
+                } else {
+                    Game.roomCode = code;
+                    socket.emit('join_room', { code, name: myName });
+                }
+                return;
+            } else if (Game.mode === 'match') {
+                initSocket();
+                socket.emit('join_matchmaking', { name: myName, maxPlayers: Game.selectedCount, mode: Game.wolfKnifeMode ? 'wolf' : 'normal' });
+                showWaiting('match');
+            } else {
+                for (let i = 0; i < Game.selectedCount - 1; i++) {
+                    const p = createPlayer('p' + (i + 1), 'AI-' + NAMES[i % NAMES.length], true);
+                    if (Game.wolfKnifeMode) { p.identity = 'wolf'; p.usedDoubleKnife = false; }
+                    Game.players.push(p);
+                }
+                Game.isHost = true;
+                startGame();
+            }
+        }
+        function showWaiting(type) {
+            showScreen('screen-waiting');
+            if (type === 'room') {
+                $('waiting-title').textContent = Game.isHost ? '等待玩家加入' : '等待房主开始';
+                $('waiting-sub').textContent = `当前 ${Game.players.length}/${Game.selectedCount} 人${Game.roomCode ? '，房间号: ' + Game.roomCode : ''}`;
+                $('waiting-room-code').style.display = Game.roomCode ? 'block' : 'none'; 
+                $('waiting-code').textContent = Game.roomCode || '';
+                $('btn-start-now').style.display = Game.isHost ? 'block' : 'none'; 
+                updateWaitingPlayers();
+            } else if (type === 'match') {
+                $('waiting-title').textContent = '正在匹配...';
+                $('waiting-sub').textContent = '寻找其他玩家（超时将补充AI）';
+                $('waiting-room-code').style.display = 'none'; 
+                $('btn-start-now').style.display = 'none';
+                let waitTime = 0;
+                Game.waitingTimer = setInterval(() => {
+                    waitTime++; 
+                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}秒（超时AI补位）`;
+                    if (waitTime >= 5) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
+                }, 1000);
+            }
+        }
+        function updateWaitingPlayers() {
+            const div = $('waiting-players');
+            div.innerHTML = `<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家 (${Game.players.length}/${Game.selectedCount})</p>`;
+            Game.players.forEach(p => div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : '(你)'}</div>`);
+            for (let i = Game.players.length; i < Game.selectedCount; i++) div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;opacity:0.5;">等待加入...</div>`;
+            $('waiting-sub').textContent = `当前 ${Game.players.length}/${Game.selectedCount} 人，等待好友加入...`;
+        }
+        function enterRoom(code) {
+            // 已废弃，使用 socket.emit('join_room') 替代
+        }
+        function cancelWaiting() { 
+            if (Game.waitingTimer) clearInterval(Game.waitingTimer); 
+            if (socket && Game.mode === 'match') socket.emit('cancel_matchmaking');
+            resetGame(); 
+            showScreen('screen-menu'); 
+        }
+        function fillAIAndStart() {
+            while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
+            if (Game.waitingTimer) clearInterval(Game.waitingTimer); startGame();
+        }
+        function startNow() {
+            if ((Game.mode === 'room' || Game.mode === 'match') && Game.isHost && socket) {
+                while (Game.players.length < Game.selectedCount) {
+                    const aiName = 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length];
+                    Game.players.push(createPlayer('p' + Game.players.length, aiName, true));
+                }
+                updateWaitingPlayers();
+                setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 500);
+            } else {
+                const needAI = Game.selectedCount - Game.players.length;
+                if (needAI > 0) { $('waiting-sub').textContent = `正在补充 ${needAI} 个AI玩家...`; setTimeout(() => fillAIAndStart(), 800); }
+                else fillAIAndStart();
+            }
+        }
+        function shufflePlayers() {
+            const myPlayer = Game.players.find(p => p.id === Game.myId);
+            for (let i = Game.players.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [Game.players[i], Game.players[j]] = [Game.players[j], Game.players[i]];
+            }
+            Game.players.forEach((p, idx) => p.id = 'p' + idx);
+            if (myPlayer) { const newMe = Game.players.find(p => p.name === myPlayer.name && !p.isAI); if (newMe) Game.myId = newMe.id; }
+            addGodMsg('🔀 玩家顺序已随机打乱');
+        }
+        function resetGame() {
+            Game.phase = 'login'; Game.players = []; Game.currentPlayerIdx = 0; Game.round = 0;
+            Game.isDay = false; Game.operations = {}; Game.history = []; Game.godMessages = [];
+            Game.selectedIdentity = null; Game.tempOperation = {}; Game.gameEnded = false;
+            Game.isLocalMultiplayer = false; Game.localPlayerNames = []; Game.newlyDeadThisRound = [];
+            Game.fastMode = false; clearCountdown(); if (Game.waitingTimer) clearInterval(Game.waitingTimer);
+            Game.isConfirming = false;
+            document.getElementById('mode-toggle').style.display = 'block';
+        }
+        function startGame() {
+            document.getElementById('mode-toggle').style.display = 'none';
+            showScreen('screen-game'); Game.phase = 'playing'; shufflePlayers();
+            Game.round = 0; Game.isDay = false; Game.currentPlayerIdx = 0; Game.operations = {};
+            Game.history = []; Game.godMessages = []; Game.gameEnded = false; Game.newlyDeadThisRound = [];
+            Game.fastMode = false; Game.isConfirming = false;
+            addGodMsg('👁️ 游戏开始！上帝已就位。'); addGodMsg('🌙 进入第零天 夜晚');
+            updateGameUI();
+            if (Game.isHost || !isOnlineMode()) {
+                nextTurn();
+            } else {
+                showWaitingAction('等待房主开始游戏...');
+            }
+        }
+        function addGodMsg(msg) { Game.godMessages.push({ text: msg, time: Date.now() }); }
+        function getIdentityColor(identity) {
+            if (identity === 'wolf') return 'var(--wolf)'; if (identity === 'witch') return 'var(--witch)';
+            if (identity === 'knight') return 'var(--knight)'; if (identity === 'magician') return 'var(--magician)';
+            return 'var(--text-dim)';
+        }
+        function getIdentityIcon(identity) {
+            if (identity === 'wolf') return '🐺'; if (identity === 'witch') return '🧙‍♀️';
+            if (identity === 'knight') return '⚔️'; if (identity === 'magician') return '🎩';
+            return '❓';
+        }
+
+        function updateGameUI() {
+            let roundDisplayText = Game.isDay ? (ROUND_NAMES[Game.round + 1] || (Game.round + 1)) : (ROUND_NAMES[Game.round] || Game.round);
+            $('round-display').textContent = roundDisplayText;
+            $('phase-badge').textContent = Game.isDay ? '白天' : '夜晚';
+            $('phase-badge').className = 'phase-badge ' + (Game.isDay ? 'phase-day' : 'phase-night');
+            const list = $('game-player-list'); list.innerHTML = '';
+            Game.players.forEach((p, idx) => {
+                const isMe = p.id === Game.myId;
+                const isCurrent = idx === Game.currentPlayerIdx && !Game.isDay && p.alive;
+                const identityClass = (isMe || Game.wolfKnifeMode) && p.identity ? p.identity : 'unknown';
+                const identityIcon = getIdentityIcon(p.identity);
+                const isNewlyDead = Game.isDay && Game.newlyDeadThisRound.some(d => d.name === p.name);
+                const div = document.createElement('div');
+                div.className = `player-item ${!p.alive ? 'dead' : ''} ${isCurrent ? 'current' : ''} ${isNewlyDead ? 'newly-dead' : ''}`;
+                let badges = '';
+                if (isMe || Game.isLocalMultiplayer) {
+                    if (p.identity === 'wolf' && p.usedDoubleKnife) badges += '<span class="special-badge badge-double-knife">双刀已用</span>';
+                    if (p.identity === 'knight' && p.usedDoubleBet) badges += '<span class="special-badge badge-double-bet">双赌已用</span>';
+                    if (p.identity === 'magician' && p.hasUsedBounce) badges += '<span class="special-badge badge-bounce-used">反弹已用</span>';
+                }
+                const statusBadge = p.alive ? '<span class="status-badge alive">存活</span>' : '<span class="status-badge dead">死亡</span>';
+                const showIdentity = isMe || Game.wolfKnifeMode || Game.isLocalMultiplayer;
+                div.innerHTML = `<div class="player-avatar ${identityClass}">${isMe ? identityIcon : '👤'}</div><div class="player-info"><div class="player-name">${p.name} ${isMe && !Game.isLocalMultiplayer ? '(你)' : ''}${badges}</div><div class="player-status">${statusBadge}${showIdentity && p.identity ? ' · ' + IDENTITY_NAMES[p.identity] : ''}</div></div>`;
+                list.appendChild(div);
+            });
+            const me = Game.players.find(p => p.id === Game.myId);
+            const identityContainer = $('identity-box');
+            if (Game.isLocalMultiplayer && !Game.wolfKnifeMode) { identityContainer.style.display = 'none'; }
+            else {
+                identityContainer.style.display = 'block';
+                if (me && me.identity) { $('my-identity').textContent = IDENTITY_NAMES[me.identity]; $('my-identity').style.color = getIdentityColor(me.identity); }
+                else if (Game.wolfKnifeMode && me) { $('my-identity').textContent = IDENTITY_NAMES['wolf']; $('my-identity').style.color = getIdentityColor('wolf'); }
+                else { $('my-identity').textContent = '未知'; $('my-identity').style.color = 'var(--text-dim)'; }
+            }
+        }
+        function shouldFastMode() { const alivePlayers = Game.players.filter(p => p.alive); return alivePlayers.length > 0 && alivePlayers.every(p => p.isAI); }
+        function nextTurn() {
+            if (Game.gameEnded) return;
+            if (!Game.fastMode && shouldFastMode()) { Game.fastMode = true; addGodMsg('⚡ AI加速模式启动'); $('action-area').style.display = 'none'; }
+            while (Game.currentPlayerIdx < Game.players.length && !Game.players[Game.currentPlayerIdx].alive) Game.currentPlayerIdx++;
+            if (Game.currentPlayerIdx >= Game.players.length) { endNight(); return; }
+            const player = Game.players[Game.currentPlayerIdx]; updateGameUI();
+            if (Game.wolfKnifeMode && !player.identity) {
+                player.identity = 'wolf'; player.usedDoubleKnife = false;
+            }
+            if (player.isAI) {
+                if (Game.isHost || !isOnlineMode()) {
+                    $('action-area').style.display = 'none'; 
+                    setTimeout(() => doAIAction(player), Game.fastMode ? 50 : 800);
+                } else {
+                    showWaitingAction(`等待 ${player.name} (AI) 操作...`);
+                }
+                return;
+            }
+            if (isOnlineMode()) {
+                if (player.id === Game.myId) {
+                    showPlayerAction(player);
+                } else {
+                    showWaitingAction(`等待 ${player.name} 操作...`);
+                }
+            } else {
+                showPlayerAction(player);
+            }
+        }
+        function startCountdown() {
+            clearCountdown(); const timerEl = $('countdown-timer');
+            timerEl.classList.remove('hidden', 'warning', 'danger');
+            Game.countdownSeconds = 60; timerEl.textContent = Game.countdownSeconds;
+            Game.countdownTimer = setInterval(() => {
+                Game.countdownSeconds--; timerEl.textContent = Game.countdownSeconds;
+                if (Game.countdownSeconds <= 10) { timerEl.classList.add('danger'); timerEl.classList.remove('warning'); }
+                else if (Game.countdownSeconds <= 30) { timerEl.classList.add('warning'); timerEl.classList.remove('danger'); }
+                if (Game.countdownSeconds <= 0) { clearCountdown(); autoConfirmAction(); }
+            }, 1000);
+        }
+        function clearCountdown() {
+            if (Game.countdownTimer) { clearInterval(Game.countdownTimer); Game.countdownTimer = null; }
+            const timerEl = $('countdown-timer'); if (timerEl) { timerEl.classList.add('hidden'); timerEl.classList.remove('warning', 'danger'); }
+        }
+        function autoConfirmAction() {
+            const player = Game.players[Game.currentPlayerIdx];
+            if (!player || !player.alive) return;
+            if (Game.wolfKnifeMode) { confirmNightAction(); return; }
+            if (Game.round === 0 && !player.identity) {
+                if (Game.selectedIdentity) { confirmIdentity(); }
+                else {
+                    const identities = ['wolf', 'witch', 'knight', 'magician'];
+                    const counts = {}; identities.forEach(id => counts[id] = Game.players.filter(p => p.identity === id).length);
+                    const minCount = Math.min(...identities.map(id => counts[id]));
+                    const available = identities.filter(id => counts[id] === minCount);
+                    Game.selectedIdentity = randChoice(available); confirmIdentity();
+                } return;
+            }
+            if (player.identity === 'witch' && $('action-content').querySelector('.action-title') && $('action-content').querySelector('.action-title').textContent.includes('状态预览')) { enterWitchAction(); return; }
+            confirmNightAction();
+        }
+        function showPlayerAction(player) {
+            const area = $('action-content');
+            if (!player.alive) { $('action-area').style.display = 'none'; showDisabledAction(player, '已死亡'); return; }
+            $('action-area').style.display = 'block';
+            if (Game.isLocalMultiplayer) {
+                if (Game.round === 0 && !player.identity && !Game.wolfKnifeMode) showIdentitySelect(player);
+                else if (player.identity === 'witch') showWitchPreview(player);
+                else showNightAction(player);
+                area.style.opacity = '0';
+                area.style.pointerEvents = 'none';
+                const mask = $('privacy-mask'); mask.classList.remove('hidden');
+                $('mask-title').textContent = `轮到 ${player.name}`;
+                $('mask-sub').textContent = player.identity === 'witch' ? '查看你的状态预览' : (Game.round === 0 && !player.identity && !Game.wolfKnifeMode ? '请选择身份' : '请进行操作');
+                $('mask-warning').textContent = `⚠️ 其他玩家请回避，确保只有 ${player.name} 能看到屏幕`;
+                $('btn-reveal').textContent = '准备就绪'; $('btn-reveal').onclick = revealAction;
+                return;
+            }
+            startCountdown();
+            if (Game.wolfKnifeMode) { showNightAction(player); return; }
+            if (Game.round === 0 && !player.identity) showIdentitySelect(player);
+            else if (player.identity === 'witch') showWitchPreview(player);
+            else showNightAction(player);
+        }
+        function revealAction() {
+            const mask = $('privacy-mask'); 
+            const player = Game.players[Game.currentPlayerIdx];
+            mask.classList.add('hidden');
+            const area = $('action-content');
+            area.style.opacity = '1';
+            area.style.pointerEvents = 'auto';
+        }
+        function showIdentitySelect(player) {
+            const area = $('action-content');
+            area.innerHTML = `<div class="action-title">选择你的身份</div><div class="identity-select"><div class="identity-card wolf" onclick="selectIdentity('wolf')"><div class="id-icon">🐺</div><div class="id-name">狼人</div></div><div class="identity-card witch" onclick="selectIdentity('witch')"><div class="id-icon">🧙‍♀️</div><div class="id-name">女巫</div></div><div class="identity-card knight" onclick="selectIdentity('knight')"><div class="id-icon">⚔️</div><div class="id-name">骑士</div></div><div class="identity-card magician" onclick="selectIdentity('magician')"><div class="id-icon">🎩</div><div class="id-name">魔术师</div></div></div><button class="btn" style="max-width:200px;margin-top:20px;background:#2d2d44;color:#64748b;cursor:not-allowed;" id="confirm-id-btn" onclick="confirmIdentity()" disabled>确认选择</button>`;
+        }
+        function showWitchPreview(player) {
+            const area = $('action-content'); const status = getWitchStatusPreview(player);
+            area.innerHTML = `<div class="action-title">🧙‍♀️ 状态预览</div><div class="action-sub">查看你的状态预览</div><div style="font-size:56px;margin:24px 0;font-weight:700;color:${status ? 'var(--alive)' : 'var(--wolf)'};">${status ? '✅ 存活' : '❌ 死亡'}</div><button class="btn" style="max-width:200px;" onclick="enterWitchAction()">确认并进入操作</button>`;
+        }
+        function enterWitchAction() { clearCountdown(); const player = Game.players[Game.currentPlayerIdx]; showNightAction(player); startCountdown(); }
+        function selectIdentity(id) {
+            Game.selectedIdentity = id;
+            document.querySelectorAll('.identity-card').forEach(el => el.classList.remove('selected'));
+            document.querySelector(`.identity-card.${id}`).classList.add('selected');
+            const btn = $('confirm-id-btn'); btn.disabled = false; btn.style.background = ''; btn.style.color = ''; btn.style.cursor = 'pointer';
+        }
+        function confirmIdentity() {
+            if (Game.isConfirming) return;
+            Game.isConfirming = true;
+            clearCountdown(); if (!Game.selectedIdentity) { Game.isConfirming = false; return; }
+            const player = Game.players[Game.currentPlayerIdx];
+            if (!player.alive) { addGodMsg(`${player.name} 已死亡，无法选择身份`); Game.currentPlayerIdx++; Game.isConfirming = false; nextTurn(); return; }
+            const confirmBtn = $('confirm-id-btn');
+            if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.background = '#2d2d44'; confirmBtn.style.color = '#64748b'; confirmBtn.style.cursor = 'not-allowed'; confirmBtn.textContent = '已确认'; }
+            player.identity = Game.selectedIdentity;
+            if (player.identity === 'witch') { player.potions.poison = 1; player.potions.antidote = 1; }
+            addGodMsg(`${player.name} 已准备就绪`); Game.selectedIdentity = null;
+            if (isOnlineMode() && socket && Game.roomCode) {
+                socket.emit('player_action', {
+                    roomCode: Game.roomCode,
+                    actionType: 'select_identity',
+                    playerId: player.id,
+                    data: { identity: player.identity }
+                });
+            }
+            setTimeout(() => { 
+                Game.isConfirming = false;
+                if (player.identity === 'witch') { showWitchPreview(player); startCountdown(); } 
+                else { showNightAction(player); startCountdown(); } 
+                updateGameUI(); 
+            }, 300);
+        }
+
+        function getWitchStatusPreview(witch) {
+            const occupant = {};
+            Game.players.forEach(p => occupant[p.id] = p.id);
+
+            const allSwapPairs = [];
+            for (let i = 0; i < Game.currentPlayerIdx; i++) {
+                const pid = Game.players[i].id;
+                const op = Game.operations[pid];
+                if (op && op.swapPair && op.swapPair.length === 2) allSwapPairs.push([...op.swapPair]);
+            }
+
+            allSwapPairs.forEach(([x, y]) => {
+                const temp = occupant[x];
+                occupant[x] = occupant[y];
+                occupant[y] = temp;
+            });
+
+            const bounceCount = {};
+            Game.players.forEach(p => bounceCount[p.id] = 0);
+            for (let i = 0; i < Game.currentPlayerIdx; i++) {
+                const pid = Game.players[i].id;
+                const op = Game.operations[pid];
+                if (op && op.bounce) {
+                    const actualTarget = occupant[op.bounce];
+                    bounceCount[actualTarget] = (bounceCount[actualTarget] || 0) + 1;
+                }
+            }
+            const activeBouncePlayers = new Set();
+            Object.entries(bounceCount).forEach(([pid, count]) => {
+                if (count % 2 === 1) activeBouncePlayers.add(pid);
+            });
+
+            const inputOps = [];
+            for (let i = 0; i < Game.currentPlayerIdx; i++) {
+                const pid = Game.players[i].id;
+                const op = Game.operations[pid];
+                if (!op) continue;
+                const fromPlayer = Game.players[i];
+                if (fromPlayer.identity === 'knight') continue;
+
+                const addOp = (type, targetPos) => {
+                    inputOps.push({ type, from: pid, to: targetPos });
+                };
+
+                if (op.knife) addOp('knife', op.knife);
+                if (op.doubleKnife) addOp('knife', op.doubleKnife);
+                if (op.shield) addOp('shield', op.shield);
+                if (op.poison) addOp('poison', op.poison);
+                if (op.poison2) addOp('poison', op.poison2);
+                if (op.magicianKnife) addOp('knife', op.magicianKnife);
+            }
+
+            function processOp(op, depth) {
+                if (depth > 20) return [];
+                const actualTarget = occupant[op.to];
+                if (activeBouncePlayers.has(actualTarget)) {
+                    const newTarget = occupant[op.from];
+                    if (newTarget === actualTarget) return [];
+                    return processOp({ ...op, to: op.from }, depth + 1);
+                }
+                return [{ ...op, to: actualTarget }];
+            }
+
+            const finalOps = [];
+            inputOps.forEach(op => finalOps.push(...processOp(op, 0)));
+
+            const witchOps = finalOps.filter(op => op.to === witch.id);
+
+            let knives = 0, shields = 0, poisons = 0;
+            witchOps.forEach(op => {
+                if (op.type === 'knife') knives++;
+                if (op.type === 'shield') shields++;
+                if (op.type === 'poison') poisons++;
+            });
+            const ds = (knives * 1 + shields * 2) % 3;
+            const pc = poisons % 2;
+            let alive = true;
+            if (ds === 0 && pc === 0) alive = true;
+            else if (ds === 2 && pc === 0) alive = true;
+            else if (ds === 1 && pc === 1) alive = true;
+            else if (ds === 1 && pc === 0) alive = false;
+            else if (ds === 0 && pc === 1) alive = false;
+            else if (ds === 2 && pc === 1) alive = false;
+            return alive;
+        }
+        function showNightAction(player) {
+            $('action-area').style.display = 'block'; const area = $('action-content');
+            Game.tempOperation = { knife: [], shield: null, poison: [], antidote: null, betAlive: null, betSelfDie: null, bounce: null, magicianKnife: null, swap: [] };
+            if (player.identity === 'wolf') {
+                const doubleKnifeStatus = player.usedDoubleKnife ? '已使用' : '未使用';
+                area.innerHTML = `<div class="action-title">🐺 狼人行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(233,69,96,0.1);border:1px solid var(--wolf);border-radius:8px;font-size:13px;color:var(--wolf);">💡 双刀机会（刀两个目标）：${doubleKnifeStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🔪 刀</span><button class="toggle-btn" id="btn-knife" onclick="toggleAction('knife')">不使用</button><div class="target-grid" id="targets-knife" style="display:none;"></div></div><div class="action-row"><span class="action-label">🛡️ 盾</span><button class="toggle-btn" id="btn-shield" onclick="toggleAction('shield')">不使用</button><div class="target-grid" id="targets-shield" style="display:none;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                renderTargets('targets-knife', 'knife'); renderTargets('targets-shield', 'shield');
+            } else if (player.identity === 'witch') {
+                const totalPoison = player.potions.poison + player.extraPoison; const canPoison = totalPoison > 0; const canAntidote = !player.hasUsedAntidote;
+                area.innerHTML = `<div class="action-title">🧙‍♀️ 女巫行动</div><div class="action-sub">毒药: ${totalPoison} | 解药: ${canAntidote ? 1 : 0}</div><div class="action-panel"><div class="action-row"><span class="action-label">☠️ 毒</span><button class="toggle-btn witch-btn" id="btn-poison" onclick="toggleAction('poison')" ${!canPoison ? 'disabled' : ''}>${canPoison ? '不使用' : '无毒药'}</button><div class="target-grid" id="targets-poison" style="display:none;"></div></div><div class="action-row"><span class="action-label">💊 解药</span><button class="toggle-btn witch-btn" id="btn-antidote" onclick="toggleAction('antidote')" ${!canAntidote ? 'disabled' : ''}>${canAntidote ? '不使用' : '已使用'}</button><div class="target-grid" id="targets-antidote" style="display:none;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                renderTargets('targets-poison', 'poison'); renderTargets('targets-antidote', 'antidote');
+            } else if (player.identity === 'knight') {
+                const doubleBetStatus = player.usedDoubleBet ? '已使用' : '未使用';
+                area.innerHTML = `<div class="action-title">⚔️ 骑士行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(59,130,246,0.1);border:1px solid var(--knight);border-radius:8px;font-size:13px;color:var(--knight);">💡 双赌机会（同时赌死+赌活）：${doubleBetStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🎲 赌活</span><button class="toggle-btn knight-btn" id="btn-betAlive" onclick="toggleAction('betAlive')">不使用</button><div class="target-grid" id="targets-betAlive" style="display:none;"></div></div><div class="action-row"><span class="action-label">💀 赌死</span><button class="toggle-btn knight-btn" id="btn-betSelfDie" onclick="toggleAction('betSelfDie')">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                renderTargets('targets-betAlive', 'betAlive');
+            } else if (player.identity === 'magician') {
+                const bounceStatus = player.hasUsedBounce ? '已使用' : '未使用';
+                const swapStatus = `交换次数: ${player.swapCharges}`;
+                area.innerHTML = `<div class="action-title">🎩 魔术师行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(236,72,153,0.1);border:1px solid var(--magician);border-radius:8px;font-size:13px;color:var(--magician);">💡 反弹护盾（全局一次）：${bounceStatus} | ${swapStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🛡️ 反弹</span><button class="toggle-btn magician-btn" id="btn-bounce" onclick="toggleAction('bounce')" ${player.hasUsedBounce ? 'disabled' : ''}>${player.hasUsedBounce ? '已使用' : '不使用'}</button><div class="target-grid" id="targets-bounce" style="display:none;"></div></div><div class="action-row"><span class="action-label">🔪 刀</span><button class="toggle-btn magician-btn" id="btn-magicianKnife" onclick="toggleAction('magicianKnife')">不使用</button><div class="target-grid" id="targets-magicianKnife" style="display:none;"></div></div><div class="action-row"><span class="action-label">🔄 交换</span><button class="toggle-btn magician-btn" id="btn-swap" onclick="toggleAction('swap')" ${player.swapCharges <= 0 ? 'disabled' : ''}>${player.swapCharges <= 0 ? '次数已用完' : '不使用'}</button><div class="target-grid" id="targets-swap" style="display:none;"></div><div id="swap-status" style="color:var(--text-dim);font-size:13px;margin-top:8px;width:100%;text-align:center;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                renderTargets('targets-bounce', 'bounce'); renderTargets('targets-magicianKnife', 'magicianKnife'); renderTargets('targets-swap', 'swap');
+            }
+        }
+        function renderTargets(containerId, type) {
+            const container = $(containerId); if (!container) return; container.innerHTML = '';
+            const currentPlayer = Game.players[Game.currentPlayerIdx];
+            Game.players.forEach(p => {
+                if (type === 'betAlive' && p.id === currentPlayer.id) return;
+                const btn = document.createElement('div'); btn.className = `target-btn ${!p.alive ? 'dead' : ''}`; btn.dataset.target = p.id;
+                btn.innerHTML = `<span>${p.name}</span>${!p.alive ? '<span style="font-size:10px;color:#64748b;margin-top:2px;">已死亡</span>' : ''}`;
+                if (p.alive) btn.onclick = () => selectTarget(type, p.id, btn); else btn.style.pointerEvents = 'none';
+                container.appendChild(btn);
+            });
+        }
+        function toggleAction(type) {
+            const currentPlayer = Game.players[Game.currentPlayerIdx];
+            if (!currentPlayer || !currentPlayer.alive) { alert('你已死亡，无法进行操作'); return; }
+            const btn = $(`btn-${type}`);
+            if (type === 'antidote') {
+                const isActive = btn.classList.contains('active');
+                if (isActive) { btn.classList.remove('active'); btn.textContent = '不使用'; $('targets-antidote').style.display = 'none'; Game.tempOperation.antidote = null; }
+                else { btn.classList.add('active'); btn.classList.add('witch-btn'); btn.textContent = '选择目标 →'; $('targets-antidote').style.display = 'flex'; }
+            } else if (type === 'betSelfDie') {
+                const isActive = btn.classList.contains('active');
+                if (isActive) { 
+                    btn.classList.remove('active'); 
+                    btn.textContent = '不使用'; 
+                    Game.tempOperation.betSelfDie = null; 
+                } else { 
+                    btn.classList.add('active'); 
+                    btn.classList.add('knight-btn'); 
+                    btn.textContent = '已选择（自己）'; 
+                    Game.tempOperation.betSelfDie = currentPlayer.id;
+                }
+            } else if (type === 'bounce') {
+                if (currentPlayer.hasUsedBounce) return;
+                const isActive = btn.classList.contains('active');
+                if (isActive) { btn.classList.remove('active'); btn.textContent = '不使用'; $('targets-bounce').style.display = 'none'; Game.tempOperation.bounce = null; }
+                else { btn.classList.add('active'); btn.classList.add('magician-btn'); btn.textContent = '选择目标 →'; $('targets-bounce').style.display = 'flex'; }
+            } else if (type === 'knife' || type === 'poison') {
+                const isActive = btn.classList.contains('active');
+                if (isActive) { btn.classList.remove('active'); btn.textContent = '不使用'; const targetsEl = $(`targets-${type}`); if (targetsEl) targetsEl.style.display = 'none'; Game.tempOperation[type] = []; }
+                else { btn.classList.add('active'); if (type === 'poison') btn.classList.add('witch-btn'); btn.textContent = '选择目标 →'; const targetsEl = $(`targets-${type}`); if (targetsEl) targetsEl.style.display = 'flex'; }
+            } else if (type === 'magicianKnife') {
+                const isActive = btn.classList.contains('active');
+                if (isActive) { btn.classList.remove('active'); btn.textContent = '不使用'; $('targets-magicianKnife').style.display = 'none'; Game.tempOperation.magicianKnife = null; }
+                else { btn.classList.add('active'); btn.classList.add('magician-btn'); btn.textContent = '选择目标 →'; $('targets-magicianKnife').style.display = 'flex'; }
+            } else if (type === 'swap') {
+                const isActive = btn.classList.contains('active');
+                if (isActive) { btn.classList.remove('active'); btn.textContent = '不使用'; $('targets-swap').style.display = 'none'; Game.tempOperation.swap = []; $('swap-status').textContent = ''; }
+                else { btn.classList.add('active'); btn.classList.add('magician-btn'); btn.textContent = '选择目标 →'; $('targets-swap').style.display = 'flex'; }
+            } else {
+                const isActive = btn.classList.contains('active');
+                if (isActive) { btn.classList.remove('active'); btn.textContent = '不使用'; const targetsEl = $(`targets-${type}`); if (targetsEl) targetsEl.style.display = 'none'; Game.tempOperation[type] = null; }
+                else { btn.classList.add('active'); if (type === 'betAlive') btn.classList.add('knight-btn'); btn.textContent = '选择目标 →'; const targetsEl = $(`targets-${type}`); if (targetsEl) targetsEl.style.display = 'flex'; }
+            }
+        }
+
+        function selectTarget(type, targetId, btnElement) {
+            const target = Game.players.find(p => p.id === targetId);
+            if (!target || !target.alive) { alert('不能选择已死亡的玩家'); return; }
+            const currentPlayer = Game.players[Game.currentPlayerIdx];
+            if (type === 'betAlive' && targetId === currentPlayer.id) { alert('赌活只能选择其他玩家'); return; }
+            const containerId = `targets-${type}`; const container = $(containerId);
+            if (type === 'knife' || type === 'poison') {
+                const isSelected = btnElement.classList.contains('selected');
+                if (isSelected) { btnElement.classList.remove('selected'); const idx = Game.tempOperation[type].indexOf(targetId); if (idx > -1) Game.tempOperation[type].splice(idx, 1); }
+                else { if (Game.tempOperation[type].length >= 2) { alert('最多只能选择2个目标'); return; } btnElement.classList.add('selected'); Game.tempOperation[type].push(targetId); }
+                const btn = $(`btn-${type}`); const count = Game.tempOperation[type].length;
+                if (count === 0) { btn.textContent = '不使用'; btn.classList.remove('active'); } else { btn.textContent = `已选 ${count} 个`; btn.classList.add('active'); }
+                return;
+            }
+            if (type === 'swap') {
+                const isSelected = btnElement.classList.contains('selected');
+                if (isSelected) { btnElement.classList.remove('selected'); const idx = Game.tempOperation.swap.indexOf(targetId); if (idx > -1) Game.tempOperation.swap.splice(idx, 1); }
+                else { if (Game.tempOperation.swap.length >= 2) { const firstTarget = Game.tempOperation.swap[0]; const firstBtn = container.querySelector(`[data-target="${firstTarget}"]`); if (firstBtn) firstBtn.classList.remove('selected'); Game.tempOperation.swap.shift(); } Game.tempOperation.swap.push(targetId); btnElement.classList.add('selected'); }
+                const count = Game.tempOperation.swap.length; const btn = $('btn-swap');
+                if (count === 0) { btn.textContent = '不使用'; btn.classList.remove('active'); $('swap-status').textContent = ''; }
+                else if (count === 1) { btn.textContent = '再选1个'; btn.classList.add('active'); $('swap-status').textContent = `已选: ${getPlayerName(Game.tempOperation.swap[0])}`; }
+                else { const names = Game.tempOperation.swap.map(id => getPlayerName(id)).join(' ↔ '); btn.textContent = names; $('swap-status').textContent = `交换: ${names}`; }
+                return;
+            }
+            if (type === 'antidote' || type === 'magicianKnife' || type === 'bounce') {
+                Game.tempOperation[type] = targetId; if (container) container.querySelectorAll('.target-btn').forEach(b => b.classList.remove('selected')); btnElement.classList.add('selected');
+                const btn = $(`btn-${type}`); if (btn) btn.textContent = '已选择'; return;
+            }
+            Game.tempOperation[type] = targetId; if (container) container.querySelectorAll('.target-btn').forEach(b => b.classList.remove('selected')); btnElement.classList.add('selected');
+            const btnId = `btn-${type}`; const btn = $(btnId); if (btn) btn.textContent = '已选择';
+        }
+        function getPlayerName(id) { const p = Game.players.find(x => x.id === id); return p ? p.name : '未知'; }
+        function confirmNightAction() {
+            if (Game.isConfirming) return;
+            Game.isConfirming = true;
+            clearCountdown(); const player = Game.players[Game.currentPlayerIdx];
+            if (!player.alive) { addGodMsg(`${player.name} 已死亡，无法操作`); Game.currentPlayerIdx++; Game.isConfirming = false; nextTurn(); return; }
+            const confirmBtn = document.querySelector('#action-content .btn');
+            if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.background = '#2d2d44'; confirmBtn.style.color = '#64748b'; confirmBtn.style.cursor = 'not-allowed'; confirmBtn.textContent = '已确认'; }
+            if (player.identity === 'wolf') {
+                const knifeTargets = Game.tempOperation.knife || [];
+                if (knifeTargets.length > 1) { if (player.usedDoubleKnife) { alert('双刀机会已使用，不能同时刀两个目标'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; } player.usedDoubleKnife = true; }
+            } else if (player.identity === 'witch') {
+                const poisonTargets = Game.tempOperation.poison || [];
+                if (poisonTargets.length > 1) { const totalPoison = player.potions.poison + player.extraPoison; if (totalPoison < 2) { alert('毒药不足，无法毒两个目标'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; } }
+            } else if (player.identity === 'knight') {
+                if (Game.tempOperation.betAlive && Game.tempOperation.betSelfDie) {
+                    if (Game.tempOperation.betAlive === player.id) { alert('不能同时赌同一个玩家活和死'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; }
+                    if (player.usedDoubleBet) { alert('双赌机会已使用，不能同时赌死和赌活'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; } player.usedDoubleBet = true;
+                }
+            } else if (player.identity === 'magician') {
+                if (Game.tempOperation.swap && Game.tempOperation.swap.length === 1) { alert('交换必须选择2个玩家'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; }
+                if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) {
+                    if (player.swapCharges <= 0) { alert('交换次数已用完'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; }
+                    player.swapCharges--;
+                }
+                if (Game.tempOperation.bounce) player.hasUsedBounce = true;
+            }
+            const op = { knife: null, shield: null, doubleKnife: null, poison: null, poison2: null, antidote: null, betAlive: null, betSelfDie: null, useDoubleBet: false, bounce: null, magicianKnife: null, swapPair: null };
+            if (player.identity === 'wolf') { const knifeTargets = Game.tempOperation.knife || []; if (knifeTargets.length >= 1) op.knife = knifeTargets[0]; if (knifeTargets.length >= 2) op.doubleKnife = knifeTargets[1]; op.shield = Game.tempOperation.shield; }
+            else if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) op.poison = poisonTargets[0]; if (poisonTargets.length >= 2) op.poison2 = poisonTargets[1]; op.antidote = Game.tempOperation.antidote; }
+            else if (player.identity === 'knight') { op.betAlive = Game.tempOperation.betAlive; op.betSelfDie = Game.tempOperation.betSelfDie; if (op.betAlive && op.betSelfDie) op.useDoubleBet = true; }
+            else if (player.identity === 'magician') { op.bounce = Game.tempOperation.bounce; op.magicianKnife = Game.tempOperation.magicianKnife; if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) op.swapPair = [...Game.tempOperation.swap]; }
+            Game.operations[player.id] = op;
+            if (isOnlineMode() && socket && Game.roomCode) {
+                socket.emit('player_action', {
+                    roomCode: Game.roomCode,
+                    actionType: 'night_action',
+                    playerId: player.id,
+                    data: {
+                        operation: op,
+                        nextIdx: Game.currentPlayerIdx + 1
+                    }
+                });
+            }
+            const actionDesc = [];
+            if (player.identity === 'wolf') { const knifeTargets = Game.tempOperation.knife || []; if (knifeTargets.length >= 1) actionDesc.push(`刀 → ${getPlayerName(knifeTargets[0])}`); if (knifeTargets.length >= 2) actionDesc.push(`刀 → ${getPlayerName(knifeTargets[1])}（双刀）`); if (Game.tempOperation.shield) actionDesc.push(`盾 → ${getPlayerName(Game.tempOperation.shield)}`); }
+            else if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) actionDesc.push(`毒 → ${getPlayerName(poisonTargets[0])}`); if (poisonTargets.length >= 2) actionDesc.push(`毒 → ${getPlayerName(poisonTargets[1])}（双毒）`); if (Game.tempOperation.antidote) actionDesc.push(`解药 → ${getPlayerName(Game.tempOperation.antidote)}`); }
+            else if (player.identity === 'knight') { if (Game.tempOperation.betAlive) actionDesc.push(`赌活 → ${getPlayerName(Game.tempOperation.betAlive)}`); if (Game.tempOperation.betSelfDie) actionDesc.push(`赌死 → 自己`); if (Game.tempOperation.betAlive && Game.tempOperation.betSelfDie) actionDesc.push('【双赌】'); }
+            else if (player.identity === 'magician') { if (Game.tempOperation.bounce) actionDesc.push(`反弹护盾 → ${getPlayerName(Game.tempOperation.bounce)}`); if (Game.tempOperation.magicianKnife) actionDesc.push(`刀 → ${getPlayerName(Game.tempOperation.magicianKnife)}`); if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) actionDesc.push(`交换 → ${getPlayerName(Game.tempOperation.swap[0])} ↔ ${getPlayerName(Game.tempOperation.swap[1])}`); }
+            Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
+            addGodMsg(`${player.name} 操作完毕`);
+            if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (poisonTargets.length >= 2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (Game.tempOperation.antidote) player.hasUsedAntidote = true; }
+            Game.currentPlayerIdx++;
+            if (Game.isLocalMultiplayer) { setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 400); return; }
+            setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 300);
+        }
+
+        function isFirstAI(player) { const firstAI = Game.players.find(p => p.isAI); return firstAI && firstAI.id === player.id; }
+        function doAIAction(player) {
+            if (!player.alive) { Game.currentPlayerIdx++; setTimeout(() => nextTurn(), Game.fastMode ? 0 : 200); return; }
+            if (Game.wolfKnifeMode && !player.identity) {
+                player.identity = 'wolf'; player.usedDoubleKnife = false;
+            }
+            if (Game.round === 0 && !player.identity) {
+                const identities = ['wolf', 'witch', 'knight', 'magician'];
+                const counts = {}; identities.forEach(id => counts[id] = Game.players.filter(p => p.identity === id).length);
+                const minCount = Math.min(...identities.map(id => counts[id]));
+                const available = identities.filter(id => counts[id] === minCount);
+                if (isFirstAI(player) && available.includes('witch')) { const witchCount = counts['witch'] || 0; if (witchCount >= 1 && Math.random() < 0.7) { available.splice(available.indexOf('witch'), 1); } if (available.length === 0) available.push('witch'); }
+                player.identity = randChoice(available);
+                if (player.identity === 'witch') { player.potions.poison = 1; player.potions.antidote = 1; }
+                addGodMsg(`${player.name} 已准备就绪`);
+                if (Game.isHost && isOnlineMode() && socket && Game.roomCode) {
+                    socket.emit('player_action', {
+                        roomCode: Game.roomCode,
+                        actionType: 'select_identity',
+                        playerId: player.id,
+                        data: { identity: player.identity }
+                    });
+                }
+            }
+            const op = { knife: null, shield: null, doubleKnife: null, poison: null, poison2: null, antidote: null, betAlive: null, betSelfDie: null, useDoubleBet: false, bounce: null, magicianKnife: null, swapPair: null };
+            const aliveOthers = Game.players.filter(p => p.id !== player.id && p.alive);
+            const aliveAll = Game.players.filter(p => p.alive);
+
+            if (player.identity === 'wolf') {
+                const knifeTargets = [];
+                if (aliveOthers.length > 0) {
+                    const shielded = new Set();
+                    Object.values(Game.operations).forEach(o => { if (o.shield) shielded.add(o.shield); });
+                    const unshielded = aliveOthers.filter(p => !shielded.has(p.id));
+                    const primary = unshielded.length > 0 ? randChoice(unshielded).id : randChoice(aliveOthers).id;
+                    knifeTargets.push(primary);
+                }
+                if (Math.random() > 0.4) op.shield = player.id;
+                if (!player.usedDoubleKnife && aliveOthers.length > 1 && knifeTargets.length > 0) {
+                    const candidates = aliveOthers.filter(p => !knifeTargets.includes(p.id));
+                    if (candidates.length > 0 && Math.random() > 0.3) {
+                        knifeTargets.push(randChoice(candidates).id);
+                        player.usedDoubleKnife = true;
+                    }
+                }
+                if (knifeTargets.length >= 1) op.knife = knifeTargets[0];
+                if (knifeTargets.length >= 2) op.doubleKnife = knifeTargets[1];
+
+            } else if (player.identity === 'witch') {
+                const willDie = !getWitchStatusPreview(player);
+                if (!player.hasUsedAntidote && willDie) {
+                    op.antidote = player.id;
+                }
+                const attackers = [];
+                Object.entries(Game.operations).forEach(([pid, o]) => {
+                    if ((o.knife === player.id || o.doubleKnife === player.id || o.magicianKnife === player.id) && pid !== player.id) {
+                        attackers.push(pid);
+                    }
+                });
+                const totalPoison = player.potions.poison + player.extraPoison;
+                if (totalPoison > 0) {
+                    if (attackers.length > 0) {
+                        op.poison = randChoice(attackers);
+                    } else if (aliveOthers.length > 0 && Math.random() > 0.2) {
+                        op.poison = randChoice(aliveOthers).id;
+                    }
+                }
+                if (totalPoison >= 2 && aliveOthers.length > 1 && op.poison && Math.random() > 0.4) {
+                    const candidates = aliveOthers.filter(p => p.id !== op.poison);
+                    if (candidates.length > 0) op.poison2 = randChoice(candidates).id;
+                }
+
+            } else if (player.identity === 'knight') {
+                let attacked = false;
+                Object.entries(Game.operations).forEach(([pid, o]) => {
+                    if (o.knife === player.id || o.doubleKnife === player.id || o.poison === player.id || o.poison2 === player.id || o.magicianKnife === player.id) {
+                        attacked = true;
+                    }
+                });
+                if (attacked) {
+                    op.betSelfDie = player.id;
+                } else if (Math.random() > 0.7) {
+                    op.betSelfDie = player.id;
+                }
+                const attackedTargets = aliveOthers.filter(p => {
+                    let a = false;
+                    Object.values(Game.operations).forEach(o => {
+                        if (o.knife === p.id || o.doubleKnife === p.id || o.poison === p.id || o.poison2 === p.id || o.magicianKnife === p.id) a = true;
+                    });
+                    return a;
+                });
+                if (attackedTargets.length > 0) {
+                    op.betAlive = randChoice(attackedTargets).id;
+                } else if (aliveOthers.length > 0 && Math.random() > 0.5) {
+                    op.betAlive = randChoice(aliveOthers).id;
+                }
+                if (!player.usedDoubleBet && op.betAlive && op.betSelfDie) {
+                    if (op.betAlive === op.betSelfDie) {
+                        op.betAlive = null;
+                    } else {
+                        op.useDoubleBet = true;
+                        player.usedDoubleBet = true;
+                    }
+                }
+
+            } else if (player.identity === 'magician') {
+                let attacked = false;
+                Object.entries(Game.operations).forEach(([pid, o]) => {
+                    if (o.knife === player.id || o.doubleKnife === player.id || o.poison === player.id || o.poison2 === player.id || o.magicianKnife === player.id) {
+                        attacked = true;
+                    }
+                });
+                if (player.swapCharges > 0 && attacked && aliveAll.length >= 2) {
+                    const candidates = aliveAll.filter(p => p.id !== player.id);
+                    if (candidates.length > 0) {
+                        op.swapPair = [player.id, randChoice(candidates).id];
+                        player.swapCharges--;
+                    }
+                }
+                if (!player.hasUsedBounce && attacked && !op.swapPair) {
+                    op.bounce = player.id;
+                    player.hasUsedBounce = true;
+                } else if (!player.hasUsedBounce && !attacked && Math.random() > 0.5) {
+                    op.bounce = randChoice(aliveAll).id;
+                    player.hasUsedBounce = true;
+                }
+                if (aliveOthers.length > 0) {
+                    const attackedTargets = aliveOthers.filter(p => {
+                        let a = false;
+                        Object.values(Game.operations).forEach(o => {
+                            if (o.knife === p.id || o.doubleKnife === p.id || o.magicianKnife === p.id) a = true;
+                        });
+                        return a;
+                    });
+                    if (attackedTargets.length > 0) {
+                        op.magicianKnife = randChoice(attackedTargets).id;
+                    } else {
+                        op.magicianKnife = randChoice(aliveOthers).id;
+                    }
+                }
+            }
+
+            Game.operations[player.id] = op;
+            if (isOnlineMode() && socket && Game.roomCode) {
+                socket.emit('player_action', {
+                    roomCode: Game.roomCode,
+                    actionType: 'night_action',
+                    playerId: player.id,
+                    data: {
+                        operation: op,
+                        nextIdx: Game.currentPlayerIdx + 1
+                    }
+                });
+            }
+            const actionDesc = [];
+            if (player.identity === 'wolf') { if (op.knife) actionDesc.push(`刀 → ${getPlayerName(op.knife)}`); if (op.doubleKnife) actionDesc.push(`刀 → ${getPlayerName(op.doubleKnife)}（双刀）`); if (op.shield) actionDesc.push(`盾 → ${getPlayerName(op.shield)}`); }
+            else if (player.identity === 'witch') { if (op.poison) actionDesc.push(`毒 → ${getPlayerName(op.poison)}`); if (op.poison2) actionDesc.push(`毒 → ${getPlayerName(op.poison2)}（双毒）`); if (op.antidote) actionDesc.push(`解药 → ${getPlayerName(op.antidote)}`); }
+            else if (player.identity === 'knight') { if (op.betAlive) actionDesc.push(`赌活 → ${getPlayerName(op.betAlive)}`); if (op.betSelfDie) actionDesc.push(`赌死 → 自己`); if (op.useDoubleBet) actionDesc.push('【双赌】'); }
+            else if (player.identity === 'magician') { if (op.bounce) actionDesc.push(`反弹护盾 → ${getPlayerName(op.bounce)}`); if (op.magicianKnife) actionDesc.push(`刀 → ${getPlayerName(op.magicianKnife)}`); if (op.swapPair) actionDesc.push(`交换 → ${getPlayerName(op.swapPair[0])} ↔ ${getPlayerName(op.swapPair[1])}`); }
+            Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
+            if (player.identity === 'witch') { if (op.poison) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (op.poison2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (op.antidote) player.hasUsedAntidote = true; }
+            if (player.identity === 'magician' && op.bounce) player.hasUsedBounce = true;
+            addGodMsg(`${player.name} 操作完毕`); Game.currentPlayerIdx++;
+            setTimeout(() => nextTurn(), Game.fastMode ? 0 : 400);
+        }
+
+        function endNight() {
+            Game.isDay = true; addGodMsg('☀️ 进入白天');
+            const results = resolveNight(Game.operations, Game.players);
+            const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
+            Game.players.forEach(p => { const survived = results[p.id]; if (p.alive && !survived) p.alive = false; });
+            Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
+            Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
+            if (Game.isHost && isOnlineMode() && socket && Game.roomCode) {
+                socket.emit('broadcast_day_result', {
+                    roomCode: Game.roomCode,
+                    deaths: Game.newlyDeadThisRound,
+                    round: Game.round,
+                    message: '天亮了'
+                });
+            }
+            updateGameUI();
+            if (Game.fastMode) setTimeout(() => enterNextNight(), 50);
+            else showDayActionArea();
+        }
+        function showDayActionArea() {
+            const area = $('action-content'); $('action-area').style.display = 'block';
+            let broadcastHtml = '';
+            if (Game.newlyDeadThisRound.length > 0) {
+                broadcastHtml = '<div class="broadcast-content" style="margin:16px 0;">';
+                Game.newlyDeadThisRound.forEach(dead => { broadcastHtml += `<div class="broadcast-item" style="background:#0a0a0f;border-radius:12px;padding:12px 16px;margin:8px 0;border-left:4px solid #ff2d55;font-size:15px;display:flex;align-items:center;gap:8px;">💀 ${dead.name}</div>`; });
+                broadcastHtml += '</div>';
+            } else broadcastHtml = '<div class="broadcast-item no-death" style="margin:16px 0;background:#0a0a0f;border-radius:12px;padding:12px 16px;border-left:4px solid #10b981;color:#10b981;font-size:15px;">🌙 平安夜，无人死亡</div>';
+            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<button class="btn" style="max-width:200px;" onclick="enterNextNight()">继续</button>`;
+        }
+        function enterNextNight() {
+            const alivePlayers = Game.players.filter(p => p.alive);
+            if (alivePlayers.length <= 1) {
+                if (alivePlayers.length === 0 && Game.newlyDeadThisRound.length > 0) endGameWithSpecialRules(Game.newlyDeadThisRound);
+                else if (alivePlayers.length === 1) endGame(alivePlayers[0]);
+                else endGame(null);
+                return;
+            }
+            Game.round++; Game.isDay = false; Game.currentPlayerIdx = 0; Game.operations = {};
+            if (Game.round >= 1 && Game.round % 2 === 1) {
+                Game.players.forEach(p => { if (p.identity === 'witch' && p.alive) p.extraPoison++; });
+                Game.players.forEach(p => { if (p.identity === 'magician' && p.alive) p.swapCharges++; });
+            }
+            if (Game.isHost && isOnlineMode() && socket && Game.roomCode) {
+                socket.emit('sync_game_state', {
+                    roomCode: Game.roomCode,
+                    state: {
+                        type: 'night_start',
+                        round: Game.round,
+                        isDay: false,
+                        currentPlayerIdx: 0,
+                        operations: {},
+                        players: Game.players.map(p => ({ id: p.id, alive: p.alive, identity: p.identity }))
+                    }
+                });
+            }
+            const roundName = ROUND_NAMES[Game.round] || Game.round; addGodMsg(`🌙 进入第${roundName}天 夜晚`); updateGameUI();
+            if (Game.isHost || !isOnlineMode()) {
+                if (Game.fastMode) setTimeout(() => nextTurn(), 50); else nextTurn();
+            }
+        }
+        function resolveNight(operations, players) {
+            const occupant = {};
+            players.forEach(p => occupant[p.id] = p.id);
+
+            const allSwapPairs = [];
+            Object.entries(operations).forEach(([pid, op]) => {
+                if (op.swapPair && op.swapPair.length === 2) allSwapPairs.push([...op.swapPair]);
+            });
+
+            allSwapPairs.forEach(([x, y]) => {
+                const temp = occupant[x];
+                occupant[x] = occupant[y];
+                occupant[y] = temp;
+            });
+
+            const inputOps = [];
+            Object.entries(operations).forEach(([fromId, op]) => {
+                const fromPlayer = players.find(p => p.id === fromId);
+                if (!fromPlayer || !fromPlayer.alive) return;
+
+                const addOp = (type, targetPos) => {
+                    inputOps.push({ type, from: fromId, to: targetPos });
+                };
+
+                if (op.knife) addOp('knife', op.knife);
+                if (op.doubleKnife) addOp('knife', op.doubleKnife);
+                if (op.shield) addOp('shield', op.shield);
+                if (op.poison) addOp('poison', op.poison);
+                if (op.poison2) addOp('poison', op.poison2);
+                if (op.antidote) addOp('antidote', op.antidote);
+                if (op.magicianKnife) addOp('knife', op.magicianKnife);
+                if (op.betAlive) inputOps.push({ type: 'betAlive', from: fromId, to: op.betAlive, noSwap: true });
+                if (op.betSelfDie) inputOps.push({ type: 'betSelfDie', from: fromId, to: op.betSelfDie, noSwap: true });
+            });
+
+            const bounceCount = {};
+            players.forEach(p => bounceCount[p.id] = 0);
+            
+            Object.entries(operations).forEach(([pid, op]) => {
+                if (op.bounce) {
+                    const actualTarget = occupant[op.bounce];
+                    bounceCount[actualTarget]++;
+                }
+            });
+            
+            const activeBouncePlayers = new Set();
+            Object.entries(bounceCount).forEach(([pid, count]) => {
+                if (count % 2 === 1) activeBouncePlayers.add(pid);
+            });
+
+            function processOp(op, depth) {
+                if (depth > 20) return [];
+                if (op.noSwap) {
+                    if (activeBouncePlayers.has(op.to)) return [];
+                    return [{ ...op }];
+                }
+
+                const actualTarget = occupant[op.to];
+
+                if (activeBouncePlayers.has(actualTarget)) {
+                    const newTarget = occupant[op.from];
+                    if (newTarget === actualTarget) {
+                        return [];
+                    }
+                    return processOp({ ...op, to: op.from }, depth + 1);
+                }
+
+                return [{ ...op, to: actualTarget }];
+            }
+
+            let outputOps = [];
+            inputOps.forEach(op => {
+                outputOps.push(...processOp(op, 0));
+            });
+
+            const rawState = {};
+            players.forEach(p => {
+                let knives = 0, shields = 0, poisons = 0;
+                outputOps.forEach(op => {
+                    if (op.to === p.id) {
+                        if (op.type === 'knife') knives++;
+                        if (op.type === 'shield') shields++;
+                        if (op.type === 'poison') poisons++;
+                    }
+                });
+                const ds = (knives * 1 + shields * 2) % 3;
+                const pc = poisons % 2;
+                let alive = true;
+                if (ds === 0 && pc === 0) alive = true;
+                else if (ds === 2 && pc === 0) alive = true;
+                else if (ds === 1 && pc === 1) alive = true;
+                else if (ds === 1 && pc === 0) alive = false;
+                else if (ds === 0 && pc === 1) alive = false;
+                else if (ds === 2 && pc === 1) alive = false;
+                rawState[p.id] = alive;
+            });
+
+            const antidoteCount = {};
+            players.forEach(p => antidoteCount[p.id] = 0);
+            outputOps.forEach(op => {
+                if (op.type === 'antidote') antidoteCount[op.to]++;
+            });
+            
+            const stateS1 = { ...rawState };
+            Object.entries(antidoteCount).forEach(([pid, count]) => {
+                if (count % 2 === 1) {
+                    stateS1[pid] = true;
+                }
+            });
+
+            const photos = {};
+            const knights = players.filter(p => p.identity === 'knight' && p.alive);
+            knights.forEach(knight => {
+                const op = operations[knight.id];
+                const photo = { ...stateS1 };
+                if (!op) { photos[knight.id] = photo; return; }
+                const hasBetSelfDie = outputOps.some(o => o.type === 'betSelfDie' && o.from === knight.id);
+                const hasBetAlive = outputOps.some(o => o.type === 'betAlive' && o.from === knight.id);
+                const betAliveOp = hasBetAlive ? outputOps.find(o => o.type === 'betAlive' && o.from === knight.id) : null;
+                const betAliveTarget = betAliveOp ? betAliveOp.to : null;
+                const betSelfDieOp = hasBetSelfDie ? outputOps.find(o => o.type === 'betSelfDie' && o.from === knight.id) : null;
+                const betSelfDieTarget = betSelfDieOp ? betSelfDieOp.to : null;
+                if (hasBetSelfDie && betSelfDieTarget) {
+                    if (!stateS1[betSelfDieTarget]) photo[betSelfDieTarget] = !photo[betSelfDieTarget];
+                    else { knight.selfDeathWrongCount++; if (knight.selfDeathWrongCount >= 2) photo[knight.id] = false; }
+                }
+                if (hasBetAlive && betAliveTarget) {
+                    if (stateS1[betAliveTarget]) photo[betAliveTarget] = !photo[betAliveTarget];
+                    else { photo[knight.id] = false; photo[betAliveTarget] = !photo[betAliveTarget]; }
+                }
+                photos[knight.id] = photo;
+            });
+
+            const stateAfterKnights = { ...stateS1 };
+            players.forEach(p => {
+                let otherKnightOp = null;
+                knights.forEach(k => {
+                    if (k.id === p.id) return;
+                    if (photos[k.id] && photos[k.id][p.id] !== stateS1[p.id]) {
+                        otherKnightOp = photos[k.id][p.id];
+                    }
+                });
+                if (otherKnightOp !== null) {
+                    stateAfterKnights[p.id] = otherKnightOp;
+                } else {
+                    if (p.identity === 'knight' && photos[p.id]) {
+                        stateAfterKnights[p.id] = photos[p.id][p.id];
+                    } else {
+                        stateAfterKnights[p.id] = stateS1[p.id];
+                    }
+                }
+            });
+
+            const finalState = { ...stateAfterKnights };
+            Object.entries(antidoteCount).forEach(([pid, count]) => {
+                if (count % 2 === 1) {
+                    finalState[pid] = true;
+                }
+            });
+            
+            return finalState;
+        }
+
+        function endGameWithSpecialRules(newlyDead) {
+            Game.gameEnded = true; clearCountdown();
+            const deadPlayers = newlyDead.map(r => ({ ...r, playerObj: Game.players.find(p => p.name === r.name) })).filter(d => d.playerObj);
+            const byIdentity = {}; deadPlayers.forEach(d => { if (!byIdentity[d.identity]) byIdentity[d.identity] = []; byIdentity[d.identity].push(d); });
+            let winners = []; const identities = Object.keys(byIdentity);
+            if (identities.length === 1) {
+                const id = identities[0];
+                if (id === 'witch') { let firstWitch = null, firstIdx = Infinity; byIdentity[id].forEach(d => { const idx = Game.players.findIndex(p => p.name === d.name); if (idx < firstIdx) { firstIdx = idx; firstWitch = d; } }); winners = [firstWitch]; }
+                else winners = byIdentity[id];
+            } else {
+                const priority = ['wolf', 'witch', 'magician', 'knight'];
+                for (const id of priority) { if (byIdentity[id] && byIdentity[id].length > 0) { if (id === 'witch') { let firstWitch = null, firstIdx = Infinity; byIdentity[id].forEach(d => { const idx = Game.players.findIndex(p => p.name === d.name); if (idx < firstIdx) { firstIdx = idx; firstWitch = d; } }); winners = [firstWitch]; } else winners = byIdentity[id]; break; } }
+            }
+            showScreen('screen-end');
+            if (winners.length === 1) { const w = winners[0]; const isMe = w.playerObj && w.playerObj.id === Game.myId; $('winner-title').textContent = isMe ? '🎉 你赢了！' : `${w.name} 获胜！`; $('winner-desc').textContent = ''; }
+            else if (winners.length > 1) { const names = winners.map(w => w.name).join('、'); $('winner-title').textContent = '🎉 共同胜利！'; $('winner-desc').textContent = `${names} 同时获胜`; }
+            else { $('winner-title').textContent = '💀 无人生还'; $('winner-desc').textContent = '所有玩家都已死亡'; }
+            renderEndLog();
+        }
+        function endGame(winner) {
+            Game.gameEnded = true; clearCountdown(); showScreen('screen-end');
+            if (winner) { const isMe = winner.id === Game.myId; $('winner-title').textContent = isMe ? '🎉 你赢了！' : `${winner.name} 获胜！`; $('winner-desc').textContent = ''; }
+            else { $('winner-title').textContent = '💀 无人生还'; $('winner-desc').textContent = '所有玩家都已死亡'; }
+            renderEndLog();
+        }
+        function renderEndLog() {
+            const logDiv = $('full-log'); logDiv.innerHTML = '<h3 style="margin-bottom:16px;color:var(--god);">📜 完整游戏日志</h3>';
+            let currentRound = -999;
+            Game.history.forEach(entry => {
+                if (entry.phase === 'day') {
+                    const rName = entry.round === 0 ? '第零天' : `第${ROUND_NAMES[entry.round] || entry.round}天`;
+                    logDiv.innerHTML += `<div style="margin-top:12px;padding:8px 0;border-bottom:1px solid var(--border);color:var(--god);font-weight:700;">${rName} 白天</div>`;
+                    logDiv.innerHTML += `<div style="padding:8px 12px;background:rgba(251,191,36,0.05);border-radius:8px;margin:4px 0;">`;
+                    entry.results.forEach(r => { 
+                        const status = r.alive ? '✅ 存活' : '❌ 死亡'; 
+                        logDiv.innerHTML += `<div style="font-size:13px;margin:2px 0;">${r.name}: ${status}</div>`; 
+                    });
+                    logDiv.innerHTML += `</div>`;
+                } else if (entry.phase === 'night') {
+                    if (entry.round !== currentRound) { 
+                        currentRound = entry.round; 
+                        const rName = entry.round === 0 ? '第零天' : `第${ROUND_NAMES[entry.round] || entry.round}天`; 
+                        logDiv.innerHTML += `<div style="margin-top:16px;padding:8px 0;border-bottom:1px solid var(--border);color:var(--god);font-weight:700;">${rName} 夜晚</div>`; 
+                    }
+                    const idColor = entry.identity === 'wolf' ? 'color:var(--wolf)' : (entry.identity === 'witch' ? 'color:var(--witch)' : (entry.identity === 'knight' ? 'color:var(--knight)' : (entry.identity === 'magician' ? 'color:var(--magician)' : 'color:var(--text-dim)')));
+                    const idName = IDENTITY_NAMES[entry.identity] || '未知';
+                    logDiv.innerHTML += `<div class="log-entry"><div class="log-phase">${entry.player} <span style="${idColor}">[${idName}]</span></div><div class="log-action">${entry.actions.join(' | ') || '无操作'}</div></div>`;
+                }
+            });
+        }
+        function showDisabledAction(player, reason) {
+            $('action-area').style.display = 'none'; const area = $('action-content'); const displayReason = !player.alive ? '已死亡' : reason; const identity = player.identity;
+            if (!identity && Game.round === 0 && !Game.wolfKnifeMode) {
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">选择你的身份</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="identity-select" style="opacity:0.3;pointer-events:none;"><div class="identity-card wolf" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🐺</div><div class="id-name" style="color:#4a4a6a;">狼人</div></div><div class="identity-card witch" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🧙‍♀️</div><div class="id-name" style="color:#4a4a6a;">女巫</div></div><div class="identity-card knight" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">⚔️</div><div class="id-name" style="color:#4a4a6a;">骑士</div></div><div class="identity-card magician" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🎩</div><div class="id-name" style="color:#4a4a6a;">魔术师</div></div></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认选择</button>`;
+            } else if (identity === 'wolf' || Game.wolfKnifeMode) {
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">🐺 狼人行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🔪 刀</span><button class="toggle-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🛡️ 盾</span><button class="toggle-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
+            } else if (identity === 'witch') {
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">🧙‍♀️ 女巫行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">☠️ 毒</span><button class="toggle-btn witch-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">💊 解药</span><button class="toggle-btn witch-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
+            } else if (identity === 'knight') {
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">⚔️ 骑士行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🎲 赌活</span><button class="toggle-btn knight-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">💀 赌死</span><button class="toggle-btn knight-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
+            } else if (identity === 'magician') {
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">🎩 魔术师行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🛡️ 反弹</span><button class="toggle-btn magician-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🔪 刀</span><button class="toggle-btn magician-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🔄 交换</span><button class="toggle-btn magician-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
+            } else area.innerHTML = `<div class="action-title" style="opacity:0.4;">等待中...</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div>`;
+        }
+        window.onload = () => {
+            const savedName = localStorage.getItem('dormkill_name'); if (savedName) $('username').value = savedName;
+            initSocket();
+        };
+        window.onbeforeunload = () => { if (Game.phase === 'playing') return '游戏正在进行中，确定要离开吗？'; };
+    </script>
+</body>
+</html>
