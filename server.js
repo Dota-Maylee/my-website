@@ -13,6 +13,7 @@ const io = new Server(server, {
 
 const rooms = new Map();
 const matchmaking = new Map();
+const matchmakingTimeouts = new Map();
 
 function generateRoomCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -72,8 +73,16 @@ io.on('connection', (socket) => {
     if (existingIdx > -1) queue.splice(existingIdx, 1);
     queue.push(socket);
     socket.matchKey = key;
-    socket.emit('matchmaking_waiting', { current: queue.length, required: maxPlayers });
+    
+    // 广播当前匹配人数给所有排队玩家
+    queue.forEach(s => s.emit('matchmaking_waiting', { current: queue.length, required: maxPlayers }));
+    
     if (queue.length >= maxPlayers) {
+      // 人数满了，立即开始
+      if (matchmakingTimeouts.has(key)) {
+        clearTimeout(matchmakingTimeouts.get(key));
+        matchmakingTimeouts.delete(key);
+      }
       const matched = queue.splice(0, maxPlayers);
       const code = generateRoomCode();
       const room = {
@@ -87,6 +96,27 @@ io.on('connection', (socket) => {
         s.roomCode = code;
         s.emit('match_found', { code, room: getRoomPublic(room), you: s.id });
       });
+    } else if (queue.length === 1 && !matchmakingTimeouts.has(key)) {
+      // 第一个玩家加入，启动5秒服务器端定时器
+      const timeout = setTimeout(() => {
+        const currentQueue = matchmaking.get(key) || [];
+        if (currentQueue.length === 0) return;
+        const matched = currentQueue.splice(0, Math.min(currentQueue.length, maxPlayers));
+        const code = generateRoomCode();
+        const room = {
+          code, host: matched[0].id, maxPlayers, mode: mode || 'normal',
+          players: matched.map((s, i) => ({ id: s.id, name: s.name || `玩家${i+1}`, isAI: false, socketId: s.id })),
+          status: 'waiting', gameState: null
+        };
+        rooms.set(code, room);
+        matched.forEach((s, i) => {
+          s.join(code);
+          s.roomCode = code;
+          s.emit('match_found', { code, room: getRoomPublic(room), you: s.id });
+        });
+        matchmakingTimeouts.delete(key);
+      }, 5000);
+      matchmakingTimeouts.set(key, timeout);
     }
   });
 
@@ -94,7 +124,14 @@ io.on('connection', (socket) => {
     if (socket.matchKey && matchmaking.has(socket.matchKey)) {
       const queue = matchmaking.get(socket.matchKey);
       const idx = queue.findIndex(s => s.id === socket.id);
-      if (idx > -1) queue.splice(idx, 1);
+      if (idx > -1) {
+        queue.splice(idx, 1);
+        // 如果队列空了，清除定时器
+        if (queue.length === 0 && matchmakingTimeouts.has(socket.matchKey)) {
+          clearTimeout(matchmakingTimeouts.get(socket.matchKey));
+          matchmakingTimeouts.delete(socket.matchKey);
+        }
+      }
     }
   });
 
@@ -117,7 +154,13 @@ io.on('connection', (socket) => {
     if (socket.matchKey && matchmaking.has(socket.matchKey)) {
       const queue = matchmaking.get(socket.matchKey);
       const idx = queue.findIndex(s => s.id === socket.id);
-      if (idx > -1) queue.splice(idx, 1);
+      if (idx > -1) {
+        queue.splice(idx, 1);
+        if (queue.length === 0 && matchmakingTimeouts.has(socket.matchKey)) {
+          clearTimeout(matchmakingTimeouts.get(socket.matchKey));
+          matchmakingTimeouts.delete(socket.matchKey);
+        }
+      }
     }
     if (socket.roomCode) {
       const room = rooms.get(socket.roomCode);
