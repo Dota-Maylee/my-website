@@ -6,7 +6,7 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: { origin: ['https://dota-maylee.github.io','http://localhost:3000'], methods: ['GET', 'POST'] },
   pingTimeout: 60000,
   pingInterval: 25000
 });
