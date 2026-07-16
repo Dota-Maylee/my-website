@@ -827,7 +827,7 @@
         }
         function startGame() {
             document.getElementById('mode-toggle').style.display = 'none';
-            showScreen('screen-game'); Game.phase = 'playing'; shufflePlayers();
+            showScreen('screen-game'); Game.phase = 'playing'; if (!isOnlineMode()) shufflePlayers();
             Game.round = 0; Game.isDay = false; Game.currentPlayerIdx = 0; Game.operations = {};
             Game.history = []; Game.godMessages = []; Game.gameEnded = false; Game.newlyDeadThisRound = [];
             Game.fastMode = false; Game.isConfirming = false;
@@ -886,7 +886,7 @@
                 else { $('my-identity').textContent = '未知'; $('my-identity').style.color = 'var(--text-dim)'; }
             }
         }
-        function shouldFastMode() { const alivePlayers = Game.players.filter(p => p.alive); return alivePlayers.length > 0 && alivePlayers.every(p => p.isAI); }
+        function shouldFastMode() { if (isOnlineMode()) return false; const alivePlayers = Game.players.filter(p => p.alive); return alivePlayers.length > 0 && alivePlayers.every(p => p.isAI); }
         function nextTurn() {
             if (Game.gameEnded) return;
             if (Game._nextTurnLock) return;
