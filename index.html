@@ -79,7 +79,7 @@
         .action-area { grid-area: action; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px; text-align: center; position: relative; }
         .action-title { font-size: 20px; margin-bottom: 20px; }
         .action-sub { color: var(--text-dim); margin-bottom: 24px; font-size: 14px; }
-        .countdown-timer { position: absolute; top: 16px; right: 20px; width: 48px; height: 48px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--text); transition: all 0.3s ease; z-index: 5; }
+        .countdown-timer { position: relative; width: 48px; height: 48px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--text); transition: all 0.3s ease; z-index: 5; flex-shrink: 0; }
         .countdown-timer.warning { border-color: var(--wolf); color: var(--wolf); animation: pulse 1s ease-in-out infinite; }
         .countdown-timer.danger { border-color: #ff2d55; color: #ff2d55; animation: pulse 0.5s ease-in-out infinite; }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
@@ -224,7 +224,10 @@
                 <span style="font-size:12px;color:var(--text-dim);">宿舍杀</span>
                 <div class="round-info" style="font-size:18px;font-weight:700;margin-top:4px;">第<span id="round-display">零</span><span id="round-suffix">天</span></div>
             </div>
-            <div class="phase-badge phase-night" id="phase-badge">夜晚</div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="countdown-timer hidden" id="countdown-timer">40</div>
+                <div class="phase-badge phase-night" id="phase-badge">夜晚</div>
+            </div>
             <div style="text-align:right;" id="identity-box">
                 <div style="font-size:14px;color:var(--text-dim);">你的身份</div>
                 <div id="my-identity" style="font-weight:700;color:var(--text-dim);">未知</div>
@@ -237,7 +240,6 @@
             </div>
         </div>
         <div class="action-area" id="action-area">
-            <div class="countdown-timer hidden" id="countdown-timer">60</div>
             <div id="privacy-mask" class="privacy-mask hidden">
                 <div class="mask-icon">🛡️</div>
                 <div class="mask-title" id="mask-title">隐私保护模式</div>
@@ -400,7 +402,7 @@
                 $('btn-start-now').style.display = 'none';
                 const wp = $('waiting-players');
                 wp.innerHTML = '<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家</p>' + 
-                    room.players.map(p => `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name}</div>`).join('');
+                    room.players.map(p => { const isMe = p.id === you; return `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${isMe ? '(你)' : ''}</div>`; }).join('');
 
                 if (Game._matchStartTimeout) clearTimeout(Game._matchStartTimeout);
                 Game._matchStartTimeout = setTimeout(() => {
@@ -427,9 +429,7 @@
                     clearTimeout(Game._matchStartTimeout);
                     Game._matchStartTimeout = null;
                 }
-                roomPlayersRaw.forEach((p, i) => {
-                    socketIdToGameId[p.id] = 'p' + i;
-                });
+                const mySocketIdSaved = mySocketId;
                 while (players.length < Game.selectedCount) {
                     const aiName = 'AI-' + NAMES[(players.length - 1) % NAMES.length];
                     players.push({ id: 'p' + players.length, name: aiName, isAI: true });
@@ -439,6 +439,19 @@
                 roomPlayersRaw.forEach(p => { nameMap[p.id] = p.name; });
                 shuffled.forEach(p => { if (nameMap[p.id]) p.name = nameMap[p.id]; });
                 Game.players = shuffled.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+
+                if (mySocketIdSaved) {
+                    const myPlayerInShuffled = shuffled.find(p => p.id === mySocketIdSaved);
+                    if (myPlayerInShuffled) {
+                        const newIdx = Game.players.findIndex(gp => gp.name === myPlayerInShuffled.name && !gp.isAI);
+                        if (newIdx >= 0) Game.myId = 'p' + newIdx;
+                    }
+                }
+
+                socketIdToGameId = {};
+                shuffled.forEach((p, i) => {
+                    if (p.id && !p.isAI) socketIdToGameId[p.id] = 'p' + i;
+                });
                 if (Game.wolfKnifeMode) {
                     Game.players.forEach(p => { p.identity = 'wolf'; p.usedDoubleKnife = false; });
                 }
@@ -605,16 +618,6 @@
 
         // ==================== 原有游戏逻辑（已集成网络同步） ====================
 
-        function seededShuffle(array, seed) {
-            const arr = [...array];
-            let s = seed.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-            for (let i = arr.length - 1; i > 0; i--) {
-                s = (s * 16807 + 12345) % 2147483647;
-                const j = s % (i + 1);
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
-            return arr;
-        }
 
         const Game = {
             phase: 'login', mode: 'ai', roomCode: null, players: [], currentPlayerIdx: 0,
@@ -799,7 +802,7 @@
         function updateWaitingPlayers() {
             const div = $('waiting-players');
             div.innerHTML = `<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家 (${Game.players.length}/${Game.selectedCount})</p>`;
-            Game.players.forEach(p => div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : '(你)'}</div>`);
+            Game.players.forEach(p => { const isMe = p.id === Game.myId; div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : (isMe ? '(你)' : '')}</div>`; });
             for (let i = Game.players.length; i < Game.selectedCount; i++) div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;opacity:0.5;">等待加入...</div>`;
             $('waiting-sub').textContent = `当前 ${Game.players.length}/${Game.selectedCount} 人，等待好友加入...`;
         }
@@ -820,7 +823,13 @@
         }
         function fillAIAndStart() {
             while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
-            if (Game.waitingTimer) clearInterval(Game.waitingTimer); startGame();
+            if (Game.waitingTimer) clearInterval(Game.waitingTimer);
+            if (isOnlineMode() && socket) {
+                socket.emit('cancel_matchmaking');
+                socket.disconnect();
+                socket = null;
+            }
+            startGame();
         }
         function startNow() {
             if ((Game.mode === 'room' || Game.mode === 'match') && Game.isHost && socket) {
@@ -936,7 +945,7 @@
                     $('action-area').style.display = 'none'; 
                     setTimeout(() => doAIAction(player), Game.fastMode ? 50 : 800);
                 } else {
-                    $('action-area').style.display = 'none';
+                    showWaitingAction(`等待 ${player.name} (AI) 操作...`);
                 }
                 return;
             }
@@ -958,7 +967,13 @@
                 Game.countdownSeconds--; timerEl.textContent = Game.countdownSeconds;
                 if (Game.countdownSeconds <= 10) { timerEl.classList.add('danger'); timerEl.classList.remove('warning'); }
                 else if (Game.countdownSeconds <= 30) { timerEl.classList.add('warning'); timerEl.classList.remove('danger'); }
-                if (Game.countdownSeconds <= 0) { clearCountdown(); autoConfirmAction(); }
+                if (Game.countdownSeconds <= 0) { 
+                    clearCountdown(); 
+                    const player = Game.players[Game.currentPlayerIdx];
+                    if (!isOnlineMode() || (player && player.id === Game.myId)) {
+                        autoConfirmAction(); 
+                    }
+                }
             }, 1000);
         }
         function clearCountdown() {
@@ -999,7 +1014,6 @@
                 $('btn-reveal').textContent = '准备就绪'; $('btn-reveal').onclick = revealAction;
                 return;
             }
-            startCountdown();
             if (Game.wolfKnifeMode) { showNightAction(player); return; }
             if (Game.round === 0 && !player.identity) showIdentitySelect(player);
             else if (player.identity === 'witch') showWitchPreview(player);
@@ -1049,8 +1063,8 @@
             }
             setTimeout(() => { 
                 Game.isConfirming = false;
-                if (player.identity === 'witch') { showWitchPreview(player); startCountdown(); } 
-                else { showNightAction(player); startCountdown(); } 
+                if (player.identity === 'witch') { showWitchPreview(player); } 
+                else { showNightAction(player); } 
                 updateGameUI(); 
             }, 300);
         }
