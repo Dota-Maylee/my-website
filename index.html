@@ -393,7 +393,6 @@
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                 Game.myId = 'p' + room.players.findIndex(p => p.id === you);
 
-                // 匹配成功：显示简洁过渡界面，不显示房间等待
                 showScreen('screen-waiting');
                 $('waiting-title').textContent = '匹配成功！';
                 $('waiting-sub').textContent = `玩家 ${room.playerCount}/${room.maxPlayers} 已就绪，即将开始...`;
@@ -403,7 +402,6 @@
                 wp.innerHTML = '<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家</p>' + 
                     room.players.map(p => `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name}</div>`).join('');
 
-                // 超时保护：8秒未同步则本地开始
                 if (Game._matchStartTimeout) clearTimeout(Game._matchStartTimeout);
                 Game._matchStartTimeout = setTimeout(() => {
                     if (Game.phase !== 'playing' && !Game.gameEnded) {
@@ -436,7 +434,11 @@
                     const aiName = 'AI-' + NAMES[(players.length - 1) % NAMES.length];
                     players.push({ id: 'p' + players.length, name: aiName, isAI: true });
                 }
-                Game.players = players.map((p, i) => createPlayer(p.id, p.name, p.isAI));
+                const shuffled = seededShuffle(players, roomCode || 'default');
+                const nameMap = {};
+                roomPlayersRaw.forEach(p => { nameMap[p.id] = p.name; });
+                shuffled.forEach(p => { if (nameMap[p.id]) p.name = nameMap[p.id]; });
+                Game.players = shuffled.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                 if (Game.wolfKnifeMode) {
                     Game.players.forEach(p => { p.identity = 'wolf'; p.usedDoubleKnife = false; });
                 }
@@ -444,6 +446,7 @@
             });
 
             socket.on('player_action', ({ from, action, data }) => {
+                Game._nextTurnLock = false;
                 const { actionType, playerId, data: actionData } = data;
                 if (actionType === 'select_identity') {
                     const player = Game.players.find(p => p.id === playerId);
@@ -491,21 +494,23 @@
             });
 
             socket.on('day_result', ({ deaths, round, message }) => {
+                Game._nextTurnLock = false;
                 Game.isDay = true;
                 Game.round = round;
-                const results = resolveNight(Game.operations, Game.players);
-                const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
-                Game.players.forEach(p => {
-                    const survived = results[p.id];
-                    if (p.alive && !survived) p.alive = false;
-                });
-                Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
+                Game.newlyDeadThisRound = deaths || [];
+                if (deaths) {
+                    deaths.forEach(d => {
+                        const p = Game.players.find(pl => pl.name === d.name);
+                        if (p) p.alive = false;
+                    });
+                }
                 Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
                 updateGameUI();
                 showDayActionArea();
             });
 
             socket.on('game_state_update', (state) => {
+                Game._nextTurnLock = false;
                 if (Game.isHost) return;
                 if (state.type === 'night_start') {
                     Game.round = state.round;
@@ -528,6 +533,11 @@
             });
 
             socket.on('player_left', ({ playerId, room }) => {
+                if (room && room.players) {
+                    room.players.forEach((p, i) => {
+                        if (p.id) socketIdToGameId[p.id] = 'p' + i;
+                    });
+                }
                 const gameId = socketIdToGameId[playerId];
                 if (gameId && Game.phase === 'playing') {
                     const player = Game.players.find(p => p.id === gameId);
@@ -535,11 +545,17 @@
                         player.isAI = true;
                         addGodMsg(`${player.name} 断开连接，由AI接管`);
                         updateGameUI();
-                        if (Game.isHost && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
+                        if (Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
                             clearCountdown();
+                            Game._nextTurnLock = false;
                             setTimeout(() => {
                                 if (!Game.gameEnded && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
-                                    doAIAction(player);
+                                    if (Game.isHost || !isOnlineMode()) {
+                                        doAIAction(player);
+                                    } else {
+                                        Game.currentPlayerIdx++;
+                                        nextTurn();
+                                    }
                                 }
                             }, 600);
                         }
@@ -584,13 +600,21 @@
         }
 
         function showWaitingAction(msg) {
-            $('action-area').style.display = 'block';
-            const area = $('action-content');
-            area.innerHTML = `<div class="action-title" style="opacity:0.6;">⏳ 等待中</div><div class="action-sub" style="color:var(--text-dim);">${msg}</div><div style="width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--god);border-radius:50%;animation:spin 1s linear infinite;margin:20px auto;"></div>`;
+            $('action-area').style.display = 'none';
         }
 
         // ==================== 原有游戏逻辑（已集成网络同步） ====================
 
+        function seededShuffle(array, seed) {
+            const arr = [...array];
+            let s = seed.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+            for (let i = arr.length - 1; i > 0; i--) {
+                s = (s * 16807 + 12345) % 2147483647;
+                const j = s % (i + 1);
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
 
         const Game = {
             phase: 'login', mode: 'ai', roomCode: null, players: [], currentPlayerIdx: 0,
@@ -599,10 +623,11 @@
             gameEnded: false, channel: null, waitingTimer: null, aiPlayers: [],
             isHost: false, isLocalMultiplayer: false, localPlayerNames: [],
             localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
-            countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
+            countdownSeconds: 40, fastMode: false, wolfKnifeMode: false,
             isConfirming: false,
             _nextTurnLock: false,
-            _matchStartTimeout: null
+            _matchStartTimeout: null,
+            _dayAutoTimer: null
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
         const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
@@ -657,7 +682,7 @@
             const modeSuffix = Game.wolfKnifeMode ? '（狼刀博弈）' : '';
             if (mode === 'room') {
                 $('setup-title').textContent = '房间对战' + modeSuffix; $('setup-btn').textContent = '进入房间';
-                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '输入房间号，创建或加入房间';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '直接点击"进入房间"以创建房间，输入六位房间号以加入房间';
                 $('room-code-section').style.display = 'block'; $('local-players-section').style.display = 'none';
                 Game.isHost = true;
             } else if (mode === 'ai') {
@@ -783,7 +808,13 @@
         }
         function cancelWaiting() { 
             if (Game.waitingTimer) clearInterval(Game.waitingTimer); 
-            if (socket && Game.mode === 'match') socket.emit('cancel_matchmaking');
+            if (Game._matchStartTimeout) clearTimeout(Game._matchStartTimeout);
+            if (socket) {
+                if (Game.mode === 'match') socket.emit('cancel_matchmaking');
+                if (Game.mode === 'room' && Game.roomCode) socket.emit('leave_room', { code: Game.roomCode });
+                socket.disconnect();
+                socket = null;
+            }
             resetGame(); 
             showScreen('screen-menu'); 
         }
@@ -822,6 +853,7 @@
             Game.isLocalMultiplayer = false; Game.localPlayerNames = []; Game.newlyDeadThisRound = [];
             Game.fastMode = false; clearCountdown(); if (Game.waitingTimer) clearInterval(Game.waitingTimer);
             Game.isConfirming = false;
+            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
             document.getElementById('mode-toggle').style.display = 'block';
         }
@@ -904,7 +936,7 @@
                     $('action-area').style.display = 'none'; 
                     setTimeout(() => doAIAction(player), Game.fastMode ? 50 : 800);
                 } else {
-                    showWaitingAction(`等待 ${player.name} (AI) 操作...`);
+                    $('action-area').style.display = 'none';
                 }
                 return;
             }
@@ -921,7 +953,7 @@
         function startCountdown() {
             clearCountdown(); const timerEl = $('countdown-timer');
             timerEl.classList.remove('hidden', 'warning', 'danger');
-            Game.countdownSeconds = 60; timerEl.textContent = Game.countdownSeconds;
+            Game.countdownSeconds = 40; timerEl.textContent = Game.countdownSeconds;
             Game.countdownTimer = setInterval(() => {
                 Game.countdownSeconds--; timerEl.textContent = Game.countdownSeconds;
                 if (Game.countdownSeconds <= 10) { timerEl.classList.add('danger'); timerEl.classList.remove('warning'); }
@@ -989,7 +1021,7 @@
             const area = $('action-content'); const status = getWitchStatusPreview(player);
             area.innerHTML = `<div class="action-title">🧙‍♀️ 状态预览</div><div class="action-sub">查看你的状态预览</div><div style="font-size:56px;margin:24px 0;font-weight:700;color:${status ? 'var(--alive)' : 'var(--wolf)'};">${status ? '✅ 存活' : '❌ 死亡'}</div><button class="btn" style="max-width:200px;" onclick="enterWitchAction()">确认并进入操作</button>`;
         }
-        function enterWitchAction() { clearCountdown(); const player = Game.players[Game.currentPlayerIdx]; showNightAction(player); startCountdown(); }
+        function enterWitchAction() { const player = Game.players[Game.currentPlayerIdx]; showNightAction(player); }
         function selectIdentity(id) {
             Game.selectedIdentity = id;
             document.querySelectorAll('.identity-card').forEach(el => el.classList.remove('selected'));
@@ -1466,9 +1498,15 @@
                 Game.newlyDeadThisRound.forEach(dead => { broadcastHtml += `<div class="broadcast-item" style="background:#0a0a0f;border-radius:12px;padding:12px 16px;margin:8px 0;border-left:4px solid #ff2d55;font-size:15px;display:flex;align-items:center;gap:8px;">💀 ${dead.name}</div>`; });
                 broadcastHtml += '</div>';
             } else broadcastHtml = '<div class="broadcast-item no-death" style="margin:16px 0;background:#0a0a0f;border-radius:12px;padding:12px 16px;border-left:4px solid #10b981;color:#10b981;font-size:15px;">🌙 平安夜，无人死亡</div>';
-            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<button class="btn" style="max-width:200px;" onclick="enterNextNight()">继续</button>`;
+            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<div style="color:var(--text-dim);font-size:14px;margin-top:12px;">5秒后自动进入夜晚...</div>`;
+
+            if (Game._dayAutoTimer) clearTimeout(Game._dayAutoTimer);
+            Game._dayAutoTimer = setTimeout(() => {
+                enterNextNight();
+            }, 5000);
         }
         function enterNextNight() {
+            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             const alivePlayers = Game.players.filter(p => p.alive);
             if (alivePlayers.length <= 1) {
                 if (alivePlayers.length === 0 && Game.newlyDeadThisRound.length > 0) endGameWithSpecialRules(Game.newlyDeadThisRound);
