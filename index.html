@@ -817,14 +817,14 @@
                 updateWaitingPlayers();
             } else if (type === 'match') {
                 $('waiting-title').textContent = '正在匹配...';
-                $('waiting-sub').textContent = '寻找其他玩家（30秒后AI补位）';
+                $('waiting-sub').textContent = '寻找其他玩家（10秒后AI补位）';
                 $('waiting-room-code').style.display = 'none'; 
                 $('btn-start-now').style.display = 'none';
                 let waitTime = 0;
                 Game.waitingTimer = setInterval(() => {
                     waitTime++; 
-                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}/30秒`;
-                    if (waitTime >= 30) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
+                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}/10秒`;
+                    if (waitTime >= 10) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
                 }, 1000);
             }
         }
@@ -986,7 +986,7 @@
             if (Game.gameEnded) return;
             if (Game._nextTurnLock) return;
             Game._nextTurnLock = true;
-            setTimeout(() => { Game._nextTurnLock = false; }, 600);
+            setTimeout(() => { Game._nextTurnLock = false; }, 200);
             if (!Game.fastMode && shouldFastMode()) { Game.fastMode = true; addGodMsg('⚡ AI加速模式启动'); $('action-area').style.display = 'none'; }
             while (Game.currentPlayerIdx < Game.players.length && !Game.players[Game.currentPlayerIdx].alive) Game.currentPlayerIdx++;
             if (Game.currentPlayerIdx >= Game.players.length) { endNight(); return; }
@@ -1373,8 +1373,10 @@
             addGodMsg(`${player.name} 操作完毕`);
             if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (poisonTargets.length >= 2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (Game.tempOperation.antidote) player.hasUsedAntidote = true; }
             Game.currentPlayerIdx++;
-            if (Game.isLocalMultiplayer) { setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 400); return; }
-            setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 300);
+            Game.isConfirming = false;
+            Game._nextTurnLock = false; // 清除锁，确保 nextTurn 能执行
+            if (Game.isLocalMultiplayer) { setTimeout(() => nextTurn(), 100); return; }
+            setTimeout(() => nextTurn(), 50);
         }
 
         function isFirstAI(player) { const firstAI = Game.players.find(p => p.isAI); return firstAI && firstAI.id === player.id; }
