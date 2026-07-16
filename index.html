@@ -394,6 +394,9 @@
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                 Game.myId = 'p' + room.players.findIndex(p => p.id === you);
+                // 保存自己的名字用于后续匹配
+                const myPlayer = room.players.find(p => p.id === you);
+                if (myPlayer) Game._myName = myPlayer.name;
 
                 showScreen('screen-waiting');
                 $('waiting-title').textContent = '匹配成功！';
@@ -413,7 +416,7 @@
                         }
                         startGame();
                     }
-                }, 8000);
+                }, 15000);
 
                 if (Game.isHost) {
                     setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 600);
@@ -429,29 +432,42 @@
                     clearTimeout(Game._matchStartTimeout);
                     Game._matchStartTimeout = null;
                 }
-                const mySocketIdSaved = mySocketId;
+
+                // 保存真人玩家名字（从 roomPlayersRaw）
+                const realPlayerNames = roomPlayersRaw.filter(p => !p.isAI).map(p => p.name);
+                const myNameSaved = Game._myName || 
+                                    roomPlayersRaw.find(p => p.id === mySocketId)?.name ||
+                                    Game.players.find(p => p.id === Game.myId)?.name;
+
                 while (players.length < Game.selectedCount) {
                     const aiName = 'AI-' + NAMES[(players.length - 1) % NAMES.length];
                     players.push({ id: 'p' + players.length, name: aiName, isAI: true });
                 }
+
+                // 用 roomPlayersRaw 恢复真人玩家名字
+                let nameIdx = 0;
+                players.forEach(p => {
+                    if (!p.isAI && nameIdx < realPlayerNames.length) {
+                        p.name = realPlayerNames[nameIdx++];
+                    }
+                });
+
+                // 同步打乱顺序（所有客户端使用相同种子）
                 const shuffled = seededShuffle(players, roomCode || 'default');
-                const nameMap = {};
-                roomPlayersRaw.forEach(p => { nameMap[p.id] = p.name; });
-                shuffled.forEach(p => { if (nameMap[p.id]) p.name = nameMap[p.id]; });
                 Game.players = shuffled.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
 
-                if (mySocketIdSaved) {
-                    const myPlayerInShuffled = shuffled.find(p => p.id === mySocketIdSaved);
-                    if (myPlayerInShuffled) {
-                        const newIdx = Game.players.findIndex(gp => gp.name === myPlayerInShuffled.name && !gp.isAI);
-                        if (newIdx >= 0) Game.myId = 'p' + newIdx;
-                    }
+                // 重新计算 myId：通过保存的名字匹配
+                if (myNameSaved) {
+                    const myIdx = Game.players.findIndex(p => p.name === myNameSaved && !p.isAI);
+                    if (myIdx >= 0) Game.myId = 'p' + myIdx;
                 }
 
+                // 重新建立 socketIdToGameId 映射
                 socketIdToGameId = {};
                 shuffled.forEach((p, i) => {
-                    if (p.id && !p.isAI) socketIdToGameId[p.id] = 'p' + i;
+                    if (!p.isAI) socketIdToGameId[p.id] = 'p' + i;
                 });
+
                 if (Game.wolfKnifeMode) {
                     Game.players.forEach(p => { p.identity = 'wolf'; p.usedDoubleKnife = false; });
                 }
@@ -630,7 +646,8 @@
             isConfirming: false,
             _nextTurnLock: false,
             _matchStartTimeout: null,
-            _dayAutoTimer: null
+            _dayAutoTimer: null,
+            _myName: null
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
         const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
@@ -788,14 +805,14 @@
                 updateWaitingPlayers();
             } else if (type === 'match') {
                 $('waiting-title').textContent = '正在匹配...';
-                $('waiting-sub').textContent = '寻找其他玩家（超时将补充AI）';
+                $('waiting-sub').textContent = '寻找其他玩家（30秒后AI补位）';
                 $('waiting-room-code').style.display = 'none'; 
                 $('btn-start-now').style.display = 'none';
                 let waitTime = 0;
                 Game.waitingTimer = setInterval(() => {
                     waitTime++; 
-                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}秒（超时AI补位）`;
-                    if (waitTime >= 5) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
+                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}/30秒`;
+                    if (waitTime >= 30) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
                 }, 1000);
             }
         }
@@ -822,13 +839,31 @@
             showScreen('screen-menu'); 
         }
         function fillAIAndStart() {
-            while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
-            if (Game.waitingTimer) clearInterval(Game.waitingTimer);
-            if (isOnlineMode() && socket) {
-                socket.emit('cancel_matchmaking');
-                socket.disconnect();
-                socket = null;
+            if (isOnlineMode() && socket && Game.mode === 'match') {
+                // 在线匹配超时：继续等待服务器，不自动本地开始
+                $('waiting-sub').textContent = '匹配时间较长，继续等待服务器...';
+                let extraWait = 0;
+                Game.waitingTimer = setInterval(() => {
+                    extraWait++;
+                    $('waiting-sub').textContent = `继续等待服务器... ${extraWait}秒`;
+                    if (extraWait >= 60) {
+                        clearInterval(Game.waitingTimer);
+                        // 60秒后仍未匹配，用AI补位本地开始
+                        while (Game.players.length < Game.selectedCount) {
+                            Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
+                        }
+                        if (socket) {
+                            socket.emit('cancel_matchmaking');
+                            socket.disconnect();
+                            socket = null;
+                        }
+                        startGame();
+                    }
+                }, 1000);
+                return;
             }
+            while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
+            if (Game.waitingTimer) clearInterval(Game.waitingTimer); 
             startGame();
         }
         function startNow() {
@@ -945,15 +980,18 @@
                     $('action-area').style.display = 'none'; 
                     setTimeout(() => doAIAction(player), Game.fastMode ? 50 : 800);
                 } else {
-                    showWaitingAction(`等待 ${player.name} (AI) 操作...`);
+                    $('action-area').style.display = 'none';
                 }
                 return;
+            }
+            if (!player.isAI) {
+                startCountdown();
             }
             if (isOnlineMode()) {
                 if (player.id === Game.myId) {
                     showPlayerAction(player);
                 } else {
-                    showWaitingAction(`等待 ${player.name} 操作...`);
+                    $('action-area').style.display = 'none';
                 }
             } else {
                 showPlayerAction(player);
@@ -1014,6 +1052,7 @@
                 $('btn-reveal').textContent = '准备就绪'; $('btn-reveal').onclick = revealAction;
                 return;
             }
+            startCountdown();
             if (Game.wolfKnifeMode) { showNightAction(player); return; }
             if (Game.round === 0 && !player.identity) showIdentitySelect(player);
             else if (player.identity === 'witch') showWitchPreview(player);
@@ -1063,8 +1102,8 @@
             }
             setTimeout(() => { 
                 Game.isConfirming = false;
-                if (player.identity === 'witch') { showWitchPreview(player); } 
-                else { showNightAction(player); } 
+                if (player.identity === 'witch') { showWitchPreview(player); startCountdown(); } 
+                else { showNightAction(player); startCountdown(); } 
                 updateGameUI(); 
             }, 300);
         }
