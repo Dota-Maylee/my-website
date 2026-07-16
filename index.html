@@ -353,15 +353,9 @@
             });
 
             socket.on('error', ({ message }) => {
-                if (message === '房间不存在' && Game.mode === 'room') {
-                    const myName = localStorage.getItem('dormkill_name') || '玩家';
-                    socket.emit('create_room', { 
-                        name: myName, 
-                        maxPlayers: Game.selectedCount, 
-                        mode: Game.wolfKnifeMode ? 'wolf' : 'normal' 
-                    });
-                } else {
-                    alert(message);
+                alert(message);
+                if (Game.mode === 'room') {
+                    setTimeout(() => backToMenu(), 500);
                 }
             });
 
@@ -398,9 +392,31 @@
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                 Game.myId = 'p' + room.players.findIndex(p => p.id === you);
-                showWaiting('room');
-                if (Game.isHost && room.playerCount >= room.maxPlayers) {
-                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 1000);
+
+                // 匹配成功：显示简洁过渡界面，不显示房间等待
+                showScreen('screen-waiting');
+                $('waiting-title').textContent = '匹配成功！';
+                $('waiting-sub').textContent = `玩家 ${room.playerCount}/${room.maxPlayers} 已就绪，即将开始...`;
+                $('waiting-room-code').style.display = 'none';
+                $('btn-start-now').style.display = 'none';
+                const wp = $('waiting-players');
+                wp.innerHTML = '<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家</p>' + 
+                    room.players.map(p => `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name}</div>`).join('');
+
+                // 超时保护：8秒未同步则本地开始
+                if (Game._matchStartTimeout) clearTimeout(Game._matchStartTimeout);
+                Game._matchStartTimeout = setTimeout(() => {
+                    if (Game.phase !== 'playing' && !Game.gameEnded) {
+                        addGodMsg('⚠️ 同步超时，本地开始游戏');
+                        while (Game.players.length < Game.selectedCount) {
+                            Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
+                        }
+                        startGame();
+                    }
+                }, 8000);
+
+                if (Game.isHost) {
+                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 600);
                 }
             });
 
@@ -409,6 +425,10 @@
             });
 
             socket.on('game_started', ({ players, roomCode }) => {
+                if (Game._matchStartTimeout) {
+                    clearTimeout(Game._matchStartTimeout);
+                    Game._matchStartTimeout = null;
+                }
                 roomPlayersRaw.forEach((p, i) => {
                     socketIdToGameId[p.id] = 'p' + i;
                 });
@@ -581,7 +601,8 @@
             localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
             countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
             isConfirming: false,
-            _nextTurnLock: false
+            _nextTurnLock: false,
+            _matchStartTimeout: null
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
         const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
@@ -620,7 +641,7 @@
         function updateOnlineCount() {
             const el = $('online-count');
             if (!el) return;
-            fetch('https://zoological-cat-production-4101.up.railway.app/api/online-count')
+            fetch(`${SERVER_URL}/api/online-count`)
                 .then(res => res.json())
                 .then(data => {
                     el.textContent = `🟢 在线 ${data.count} 人`;
@@ -706,7 +727,12 @@
                     socket.emit('create_room', { name: myName, maxPlayers: Game.selectedCount, mode: Game.wolfKnifeMode ? 'wolf' : 'normal' });
                 } else {
                     Game.roomCode = code;
-                    socket.emit('join_room', { code, name: myName });
+                    socket.emit('join_room', { 
+                        code, 
+                        name: myName, 
+                        maxPlayers: Game.selectedCount, 
+                        mode: Game.wolfKnifeMode ? 'wolf' : 'normal' 
+                    });
                 }
                 return;
             } else if (Game.mode === 'match') {
@@ -796,6 +822,7 @@
             Game.isLocalMultiplayer = false; Game.localPlayerNames = []; Game.newlyDeadThisRound = [];
             Game.fastMode = false; clearCountdown(); if (Game.waitingTimer) clearInterval(Game.waitingTimer);
             Game.isConfirming = false;
+            if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
             document.getElementById('mode-toggle').style.display = 'block';
         }
         function startGame() {
