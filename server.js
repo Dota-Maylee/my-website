@@ -56,10 +56,6 @@ app.get("/api/online", (req, res) => {
   res.json({ count: onlineCount });
 });
 
-app.get("/api/online-count", (req, res) => {
-  res.json({ count: onlineCount });
-});
-
 io.on("connection", (socket) => {
   onlineCount++;
   io.emit("online_count", onlineCount);
@@ -99,7 +95,6 @@ io.on("connection", (socket) => {
     // 去重：检查该 socket 是否已在房间中
     const existingIdx = room.players.findIndex((p) => p.socketId === socket.id);
     if (existingIdx > -1) {
-      // 已存在，更新名字后重新发送房间信息
       room.players[existingIdx].name = name || room.players[existingIdx].name;
       socket.emit("room_joined", {
         code,
@@ -114,10 +109,8 @@ io.on("connection", (socket) => {
       (p) => p.name === name && !p.isAI
     );
     if (nameDupIdx > -1) {
-      // 踢掉旧连接，新连接接替
       const oldPlayer = room.players[nameDupIdx];
       room.players.splice(nameDupIdx, 1);
-      // 通知旧连接被踢（如果还连着）
       const oldSocket = io.sockets.sockets.get(oldPlayer.socketId);
       if (oldSocket) {
         oldSocket.emit("error", { message: "你在其他地方加入了该房间" });
@@ -150,10 +143,10 @@ io.on("connection", (socket) => {
   socket.on("start_game", ({ code }) => {
     const room = rooms.get(code);
     if (!room || room.host !== socket.id) return;
-    if (room.status !== "waiting") return; // 防止重复点击
+    if (room.status !== "waiting") return;
     room.status = "playing";
 
-    // 服务器端统一补充AI，确保所有客户端收到完整玩家列表
+    // 补充 AI
     const aiNames = ["Alpha", "Beta", "Gamma", "Delta", "Echo", "Fox"];
     let aiIndex = 0;
     while (room.players.length < room.maxPlayers) {
@@ -167,15 +160,25 @@ io.on("connection", (socket) => {
       aiIndex++;
     }
 
-    const playerIds = room.players.map((p, i) => ({ ...p, gameId: "p" + i }));
-    room.players = playerIds;
-    io.to(code).emit("game_started", {
-      players: playerIds.map((p) => ({
-        id: p.gameId,
-        name: p.name,
-        isAI: p.isAI,
-      })),
-      roomCode: code,
+    // 分配 gameId
+    room.players = room.players.map((p, i) => ({ ...p, gameId: "p" + i }));
+
+    // 为每个客户端单独发送，包含 theirId
+    room.players.forEach((p) => {
+      if (!p.isAI && p.socketId) {
+        const s = io.sockets.sockets.get(p.socketId);
+        if (s) {
+          s.emit("game_started", {
+            players: room.players.map((p) => ({
+              id: p.gameId,
+              name: p.name,
+              isAI: p.isAI,
+            })),
+            roomCode: code,
+            yourId: p.gameId,
+          });
+        }
+      }
     });
   });
 
@@ -322,10 +325,12 @@ io.on("connection", (socket) => {
         if (idx > -1) {
           const player = room.players[idx];
           room.players.splice(idx, 1);
+          // 发送 gameId（如果已分配）
+          const emitId = player.gameId || player.id;
           socket
             .to(socket.roomCode)
             .emit("player_left", {
-              playerId: player.id,
+              playerId: emitId,
               room: getRoomPublic(room),
             });
           if (room.players.length === 0) {
