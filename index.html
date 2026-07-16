@@ -169,7 +169,7 @@
         </div>
     </div>
     <div id="screen-menu" class="screen">
-    <div id="online-count" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 18px;background:var(--card);border:2px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-weight:600;z-index:1000;">🟢 在线 -- 人</div>
+    <div id="online-count" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 18px;background:var(--card);border:2px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-weight:600;z-index:1000;">⚪ 离线</div>
         <div style="text-align:center;margin-bottom:20px;padding-top:60px;">
             <h1 style="font-size:32px;margin-bottom:8px;">选择模式</h1>
             <p style="color:var(--text-dim);"><span id="menu-username"></span></p>
@@ -348,10 +348,12 @@
             socket.on('connect', () => {
                 console.log('已连接到服务器');
                 mySocketId = socket.id;
+                updateOnlineCount();
             });
 
             socket.on('disconnect', () => {
                 console.log('与服务器断开连接');
+                updateOnlineCount();
             });
 
             socket.on('error', ({ message }) => {
@@ -428,10 +430,9 @@
             });
 
             socket.on('game_started', ({ players, roomCode }) => {
-                if (Game._matchStartTimeout) {
-                    clearTimeout(Game._matchStartTimeout);
-                    Game._matchStartTimeout = null;
-                }
+                // 清除所有超时定时器
+                if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
+                if (Game._startGameTimeout) { clearTimeout(Game._startGameTimeout); Game._startGameTimeout = null; }
 
                 // 保存真人玩家名字（从 roomPlayersRaw）
                 const realPlayerNames = roomPlayersRaw.filter(p => !p.isAI).map(p => p.name);
@@ -439,9 +440,12 @@
                                     roomPlayersRaw.find(p => p.id === mySocketId)?.name ||
                                     Game.players.find(p => p.id === Game.myId)?.name;
 
+                // 统一补充AI：使用NAMES数组按顺序命名，确保所有客户端一致
+                let aiIndex = 0;
                 while (players.length < Game.selectedCount) {
-                    const aiName = 'AI-' + NAMES[(players.length - 1) % NAMES.length];
+                    const aiName = 'AI-' + NAMES[aiIndex % NAMES.length];
                     players.push({ id: 'p' + players.length, name: aiName, isAI: true });
+                    aiIndex++;
                 }
 
                 // 用 roomPlayersRaw 恢复真人玩家名字
@@ -646,6 +650,7 @@
             isConfirming: false,
             _nextTurnLock: false,
             _matchStartTimeout: null,
+            _startGameTimeout: null,
             _dayAutoTimer: null,
             _myName: null
         };
@@ -686,16 +691,23 @@
         function updateOnlineCount() {
             const el = $('online-count');
             if (!el) return;
-            fetch(`${SERVER_URL}/api/online-count`)
-                .then(res => res.json())
-                .then(data => {
-                    el.textContent = `🟢 在线 ${data.count} 人`;
-                    el.style.opacity = '1';
-                })
-                .catch(() => {
-                    el.textContent = '⚪ 在线 -- 人';
-                    el.style.opacity = '0.6';
-                });
+            // 优先通过 socket 连接状态判断
+            if (socket && socket.connected) {
+                el.textContent = '🟢 在线';
+                el.style.opacity = '1';
+                // 尝试获取具体人数，失败也不影响
+                fetch(`${SERVER_URL}/api/online-count`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && typeof data.count === 'number') {
+                            el.textContent = `🟢 在线 ${data.count} 人`;
+                        }
+                    })
+                    .catch(() => {});
+            } else {
+                el.textContent = '⚪ 离线';
+                el.style.opacity = '0.6';
+            }
         }
         function selectMode(mode) {
             Game.mode = mode; Game.isLocalMultiplayer = (mode === 'local');
@@ -840,26 +852,18 @@
         }
         function fillAIAndStart() {
             if (isOnlineMode() && socket && Game.mode === 'match') {
-                // 在线匹配超时：继续等待服务器，不自动本地开始
-                $('waiting-sub').textContent = '匹配时间较长，继续等待服务器...';
-                let extraWait = 0;
-                Game.waitingTimer = setInterval(() => {
-                    extraWait++;
-                    $('waiting-sub').textContent = `继续等待服务器... ${extraWait}秒`;
-                    if (extraWait >= 60) {
-                        clearInterval(Game.waitingTimer);
-                        // 60秒后仍未匹配，用AI补位本地开始
-                        while (Game.players.length < Game.selectedCount) {
-                            Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
-                        }
-                        if (socket) {
-                            socket.emit('cancel_matchmaking');
-                            socket.disconnect();
-                            socket = null;
-                        }
-                        startGame();
-                    }
-                }, 1000);
+                // 在线匹配30秒超时：断开服务器，用AI补位本地开始
+                $('waiting-sub').textContent = '未匹配到玩家，使用AI补位开始游戏...';
+                while (Game.players.length < Game.selectedCount) {
+                    Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
+                }
+                if (socket) {
+                    socket.emit('cancel_matchmaking');
+                    socket.disconnect();
+                    socket = null;
+                }
+                if (Game.waitingTimer) clearInterval(Game.waitingTimer);
+                startGame();
                 return;
             }
             while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
@@ -873,6 +877,20 @@
                     Game.players.push(createPlayer('p' + Game.players.length, aiName, true));
                 }
                 updateWaitingPlayers();
+
+                // 设置超时保护：5秒内未收到game_started则自动本地开始
+                if (Game._startGameTimeout) clearTimeout(Game._startGameTimeout);
+                Game._startGameTimeout = setTimeout(() => {
+                    if (Game.phase !== 'playing' && !Game.gameEnded) {
+                        addGodMsg('⚠️ 服务器响应超时，本地开始游戏');
+                        if (socket) {
+                            socket.disconnect();
+                            socket = null;
+                        }
+                        startGame();
+                    }
+                }, 5000);
+
                 setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 500);
             } else {
                 const needAI = Game.selectedCount - Game.players.length;
@@ -899,6 +917,7 @@
             Game.isConfirming = false;
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
+            if (Game._startGameTimeout) { clearTimeout(Game._startGameTimeout); Game._startGameTimeout = null; }
             document.getElementById('mode-toggle').style.display = 'block';
         }
         function startGame() {
@@ -1551,12 +1570,12 @@
                 Game.newlyDeadThisRound.forEach(dead => { broadcastHtml += `<div class="broadcast-item" style="background:#0a0a0f;border-radius:12px;padding:12px 16px;margin:8px 0;border-left:4px solid #ff2d55;font-size:15px;display:flex;align-items:center;gap:8px;">💀 ${dead.name}</div>`; });
                 broadcastHtml += '</div>';
             } else broadcastHtml = '<div class="broadcast-item no-death" style="margin:16px 0;background:#0a0a0f;border-radius:12px;padding:12px 16px;border-left:4px solid #10b981;color:#10b981;font-size:15px;">🌙 平安夜，无人死亡</div>';
-            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<div style="color:var(--text-dim);font-size:14px;margin-top:12px;">5秒后自动进入夜晚...</div>`;
+            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<div style="color:var(--text-dim);font-size:14px;margin-top:12px;">3秒后自动进入夜晚...</div>`;
 
             if (Game._dayAutoTimer) clearTimeout(Game._dayAutoTimer);
             Game._dayAutoTimer = setTimeout(() => {
                 enterNextNight();
-            }, 5000);
+            }, 3000);
         }
         function enterNextNight() {
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
