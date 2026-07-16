@@ -95,6 +95,37 @@ io.on("connection", (socket) => {
       socket.emit("error", { message: "房间已满" });
       return;
     }
+
+    // 去重：检查该 socket 是否已在房间中
+    const existingIdx = room.players.findIndex((p) => p.socketId === socket.id);
+    if (existingIdx > -1) {
+      // 已存在，更新名字后重新发送房间信息
+      room.players[existingIdx].name = name || room.players[existingIdx].name;
+      socket.emit("room_joined", {
+        code,
+        room: getRoomPublic(room),
+        you: socket.id,
+      });
+      return;
+    }
+
+    // 通过名字去重：防止同一用户开多个标签页占多个位置
+    const nameDupIdx = room.players.findIndex(
+      (p) => p.name === name && !p.isAI
+    );
+    if (nameDupIdx > -1) {
+      // 踢掉旧连接，新连接接替
+      const oldPlayer = room.players[nameDupIdx];
+      room.players.splice(nameDupIdx, 1);
+      // 通知旧连接被踢（如果还连着）
+      const oldSocket = io.sockets.sockets.get(oldPlayer.socketId);
+      if (oldSocket) {
+        oldSocket.emit("error", { message: "你在其他地方加入了该房间" });
+        oldSocket.leave(code);
+        oldSocket.roomCode = null;
+      }
+    }
+
     room.players.push({
       id: socket.id,
       name,
@@ -119,7 +150,23 @@ io.on("connection", (socket) => {
   socket.on("start_game", ({ code }) => {
     const room = rooms.get(code);
     if (!room || room.host !== socket.id) return;
+    if (room.status !== "waiting") return; // 防止重复点击
     room.status = "playing";
+
+    // 服务器端统一补充AI，确保所有客户端收到完整玩家列表
+    const aiNames = ["Alpha", "Beta", "Gamma", "Delta", "Echo", "Fox"];
+    let aiIndex = 0;
+    while (room.players.length < room.maxPlayers) {
+      const aiName = "AI-" + aiNames[aiIndex % aiNames.length];
+      room.players.push({
+        id: "ai_" + aiIndex,
+        name: aiName,
+        isAI: true,
+        socketId: null,
+      });
+      aiIndex++;
+    }
+
     const playerIds = room.players.map((p, i) => ({ ...p, gameId: "p" + i }));
     room.players = playerIds;
     io.to(code).emit("game_started", {
