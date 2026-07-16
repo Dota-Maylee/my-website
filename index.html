@@ -169,7 +169,8 @@
         </div>
     </div>
     <div id="screen-menu" class="screen">
-        <div style="text-align:center;margin-bottom:20px;">
+    <div id="online-count" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 18px;background:var(--card);border:2px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-weight:600;z-index:1000;">🟢 在线 -- 人</div>
+        <div style="text-align:center;margin-bottom:20px;padding-top:60px;">
             <h1 style="font-size:32px;margin-bottom:8px;">选择模式</h1>
             <p style="color:var(--text-dim);"><span id="menu-username"></span></p>
         </div>
@@ -515,7 +516,12 @@
                         addGodMsg(`${player.name} 断开连接，由AI接管`);
                         updateGameUI();
                         if (Game.isHost && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
-                            setTimeout(() => nextTurn(), 1000);
+                            clearCountdown();
+                            setTimeout(() => {
+                                if (!Game.gameEnded && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
+                                    doAIAction(player);
+                                }
+                            }, 600);
                         }
                     }
                 } else if ($('screen-waiting').classList.contains('active')) {
@@ -574,7 +580,8 @@
             isHost: false, isLocalMultiplayer: false, localPlayerNames: [],
             localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
             countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
-            isConfirming: false
+            isConfirming: false,
+            _nextTurnLock: false
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
         const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
@@ -610,6 +617,20 @@
             showScreen('screen-login');
         }
         function backToMenu() { resetGame(); showScreen('screen-menu'); }
+        function updateOnlineCount() {
+            const el = $('online-count');
+            if (!el) return;
+            fetch('https://zoological-cat-production-4101.up.railway.app/api/online-count')
+                .then(res => res.json())
+                .then(data => {
+                    el.textContent = `🟢 在线 ${data.count} 人`;
+                    el.style.opacity = '1';
+                })
+                .catch(() => {
+                    el.textContent = '⚪ 在线 -- 人';
+                    el.style.opacity = '0.6';
+                });
+        }
         function selectMode(mode) {
             Game.mode = mode; Game.isLocalMultiplayer = (mode === 'local');
             const modeSuffix = Game.wolfKnifeMode ? '（狼刀博弈）' : '';
@@ -841,6 +862,9 @@
         function shouldFastMode() { const alivePlayers = Game.players.filter(p => p.alive); return alivePlayers.length > 0 && alivePlayers.every(p => p.isAI); }
         function nextTurn() {
             if (Game.gameEnded) return;
+            if (Game._nextTurnLock) return;
+            Game._nextTurnLock = true;
+            setTimeout(() => { Game._nextTurnLock = false; }, 600);
             if (!Game.fastMode && shouldFastMode()) { Game.fastMode = true; addGodMsg('⚡ AI加速模式启动'); $('action-area').style.display = 'none'; }
             while (Game.currentPlayerIdx < Game.players.length && !Game.players[Game.currentPlayerIdx].alive) Game.currentPlayerIdx++;
             if (Game.currentPlayerIdx >= Game.players.length) { endNight(); return; }
@@ -1677,7 +1701,10 @@
         }
         window.onload = () => {
             const savedName = localStorage.getItem('dormkill_name'); if (savedName) $('username').value = savedName;
+            $('menu-username').textContent = savedName || '游客';
             initSocket();
+            updateOnlineCount();
+            setInterval(updateOnlineCount, 10000);
         };
         window.onbeforeunload = () => { if (Game.phase === 'playing') return '游戏正在进行中，确定要离开吗？'; };
     </script>
