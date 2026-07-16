@@ -79,7 +79,7 @@
         .action-area { grid-area: action; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px; text-align: center; position: relative; }
         .action-title { font-size: 20px; margin-bottom: 20px; }
         .action-sub { color: var(--text-dim); margin-bottom: 24px; font-size: 14px; }
-        .countdown-timer { position: relative; width: 48px; height: 48px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--text); transition: all 0.3s ease; z-index: 5; flex-shrink: 0; }
+        .countdown-timer { position: absolute; top: 16px; right: 20px; width: 48px; height: 48px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--text); transition: all 0.3s ease; z-index: 5; }
         .countdown-timer.warning { border-color: var(--wolf); color: var(--wolf); animation: pulse 1s ease-in-out infinite; }
         .countdown-timer.danger { border-color: #ff2d55; color: #ff2d55; animation: pulse 0.5s ease-in-out infinite; }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
@@ -169,8 +169,7 @@
         </div>
     </div>
     <div id="screen-menu" class="screen">
-    <div id="online-count" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 18px;background:var(--card);border:2px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-weight:600;z-index:1000;">⚪ 离线</div>
-        <div style="text-align:center;margin-bottom:20px;padding-top:60px;">
+        <div style="text-align:center;margin-bottom:20px;">
             <h1 style="font-size:32px;margin-bottom:8px;">选择模式</h1>
             <p style="color:var(--text-dim);"><span id="menu-username"></span></p>
         </div>
@@ -224,10 +223,7 @@
                 <span style="font-size:12px;color:var(--text-dim);">宿舍杀</span>
                 <div class="round-info" style="font-size:18px;font-weight:700;margin-top:4px;">第<span id="round-display">零</span><span id="round-suffix">天</span></div>
             </div>
-            <div style="display:flex;align-items:center;gap:12px;">
-                <div class="countdown-timer hidden" id="countdown-timer">40</div>
-                <div class="phase-badge phase-night" id="phase-badge">夜晚</div>
-            </div>
+            <div class="phase-badge phase-night" id="phase-badge">夜晚</div>
             <div style="text-align:right;" id="identity-box">
                 <div style="font-size:14px;color:var(--text-dim);">你的身份</div>
                 <div id="my-identity" style="font-weight:700;color:var(--text-dim);">未知</div>
@@ -240,6 +236,7 @@
             </div>
         </div>
         <div class="action-area" id="action-area">
+            <div class="countdown-timer hidden" id="countdown-timer">60</div>
             <div id="privacy-mask" class="privacy-mask hidden">
                 <div class="mask-icon">🛡️</div>
                 <div class="mask-title" id="mask-title">隐私保护模式</div>
@@ -348,18 +345,22 @@
             socket.on('connect', () => {
                 console.log('已连接到服务器');
                 mySocketId = socket.id;
-                updateOnlineCount();
             });
 
             socket.on('disconnect', () => {
                 console.log('与服务器断开连接');
-                updateOnlineCount();
             });
 
             socket.on('error', ({ message }) => {
-                alert(message);
-                if (Game.mode === 'room') {
-                    setTimeout(() => backToMenu(), 500);
+                if (message === '房间不存在' && Game.mode === 'room') {
+                    const myName = localStorage.getItem('dormkill_name') || '玩家';
+                    socket.emit('create_room', { 
+                        name: myName, 
+                        maxPlayers: Game.selectedCount, 
+                        mode: Game.wolfKnifeMode ? 'wolf' : 'normal' 
+                    });
+                } else {
+                    alert(message);
                 }
             });
 
@@ -396,32 +397,9 @@
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                 Game.myId = 'p' + room.players.findIndex(p => p.id === you);
-                // 保存自己的名字用于后续匹配
-                const myPlayer = room.players.find(p => p.id === you);
-                if (myPlayer) Game._myName = myPlayer.name;
-
-                showScreen('screen-waiting');
-                $('waiting-title').textContent = '匹配成功！';
-                $('waiting-sub').textContent = `玩家 ${room.playerCount}/${room.maxPlayers} 已就绪，即将开始...`;
-                $('waiting-room-code').style.display = 'none';
-                $('btn-start-now').style.display = 'none';
-                const wp = $('waiting-players');
-                wp.innerHTML = '<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家</p>' + 
-                    room.players.map(p => { const isMe = p.id === you; return `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${isMe ? '(你)' : ''}</div>`; }).join('');
-
-                if (Game._matchStartTimeout) clearTimeout(Game._matchStartTimeout);
-                Game._matchStartTimeout = setTimeout(() => {
-                    if (Game.phase !== 'playing' && !Game.gameEnded) {
-                        addGodMsg('⚠️ 同步超时，本地开始游戏');
-                        while (Game.players.length < Game.selectedCount) {
-                            Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
-                        }
-                        startGame();
-                    }
-                }, 15000);
-
-                if (Game.isHost) {
-                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 600);
+                showWaiting('room');
+                if (Game.isHost && room.playerCount >= room.maxPlayers) {
+                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 1000);
                 }
             });
 
@@ -429,49 +407,17 @@
                 $('waiting-sub').textContent = `当前匹配人数 ${current}/${required}...`;
             });
 
-            socket.on('game_started', ({ players, roomCode }) => {
-                // 清除所有超时定时器
-                if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
-                if (Game._startGameTimeout) { clearTimeout(Game._startGameTimeout); Game._startGameTimeout = null; }
-
-                // 保存真人玩家名字（从 roomPlayersRaw）
-                const realPlayerNames = roomPlayersRaw.filter(p => !p.isAI).map(p => p.name);
-                const myNameSaved = Game._myName || 
-                                    roomPlayersRaw.find(p => p.id === mySocketId)?.name ||
-                                    Game.players.find(p => p.id === Game.myId)?.name;
-
-                // 统一补充AI：使用NAMES数组按顺序命名，确保所有客户端一致
-                let aiIndex = 0;
-                while (players.length < Game.selectedCount) {
-                    const aiName = 'AI-' + NAMES[aiIndex % NAMES.length];
-                    players.push({ id: 'p' + players.length, name: aiName, isAI: true });
-                    aiIndex++;
+            socket.on('game_started', ({ players, roomCode, yourId }) => {
+                if (Game._matchStartTimeout) {
+                    clearTimeout(Game._matchStartTimeout);
+                    Game._matchStartTimeout = null;
                 }
-
-                // 用 roomPlayersRaw 恢复真人玩家名字
-                let nameIdx = 0;
-                players.forEach(p => {
-                    if (!p.isAI && nameIdx < realPlayerNames.length) {
-                        p.name = realPlayerNames[nameIdx++];
-                    }
-                });
-
-                // 同步打乱顺序（所有客户端使用相同种子）
-                const shuffled = seededShuffle(players, roomCode || 'default');
-                Game.players = shuffled.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
-
-                // 重新计算 myId：通过保存的名字匹配
-                if (myNameSaved) {
-                    const myIdx = Game.players.findIndex(p => p.name === myNameSaved && !p.isAI);
-                    if (myIdx >= 0) Game.myId = 'p' + myIdx;
+                // 直接使用服务器发送的顺序（服务器已经打乱）
+                Game.players = players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                // 设置 myId（服务器告诉我们是谁）
+                if (yourId) {
+                    Game.myId = yourId;
                 }
-
-                // 重新建立 socketIdToGameId 映射
-                socketIdToGameId = {};
-                shuffled.forEach((p, i) => {
-                    if (!p.isAI) socketIdToGameId[p.id] = 'p' + i;
-                });
-
                 if (Game.wolfKnifeMode) {
                     Game.players.forEach(p => { p.identity = 'wolf'; p.usedDoubleKnife = false; });
                 }
@@ -479,8 +425,11 @@
             });
 
             socket.on('player_action', ({ from, action, data }) => {
-                Game._nextTurnLock = false;
                 const { actionType, playerId, data: actionData } = data;
+                // 同步 currentPlayerIdx（在线模式下唯一推进途径）
+                if (actionData && actionData.currentPlayerIdx !== undefined) {
+                    Game.currentPlayerIdx = actionData.currentPlayerIdx;
+                }
                 if (actionType === 'select_identity') {
                     const player = Game.players.find(p => p.id === playerId);
                     if (player && !player.identity) {
@@ -520,30 +469,27 @@
                         }
                         Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
                         addGodMsg(`${player.name} 操作完毕`);
-                        Game.currentPlayerIdx = actionData.nextIdx;
                         nextTurn();
                     }
                 }
             });
 
             socket.on('day_result', ({ deaths, round, message }) => {
-                Game._nextTurnLock = false;
                 Game.isDay = true;
                 Game.round = round;
-                Game.newlyDeadThisRound = deaths || [];
-                if (deaths) {
-                    deaths.forEach(d => {
-                        const p = Game.players.find(pl => pl.name === d.name);
-                        if (p) p.alive = false;
-                    });
-                }
+                const results = resolveNight(Game.operations, Game.players);
+                const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
+                Game.players.forEach(p => {
+                    const survived = results[p.id];
+                    if (p.alive && !survived) p.alive = false;
+                });
+                Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
                 Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
                 updateGameUI();
                 showDayActionArea();
             });
 
             socket.on('game_state_update', (state) => {
-                Game._nextTurnLock = false;
                 if (Game.isHost) return;
                 if (state.type === 'night_start') {
                     Game.round = state.round;
@@ -566,11 +512,6 @@
             });
 
             socket.on('player_left', ({ playerId, room }) => {
-                if (room && room.players) {
-                    room.players.forEach((p, i) => {
-                        if (p.id) socketIdToGameId[p.id] = 'p' + i;
-                    });
-                }
                 const gameId = socketIdToGameId[playerId];
                 if (gameId && Game.phase === 'playing') {
                     const player = Game.players.find(p => p.id === gameId);
@@ -578,19 +519,8 @@
                         player.isAI = true;
                         addGodMsg(`${player.name} 断开连接，由AI接管`);
                         updateGameUI();
-                        if (Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
-                            clearCountdown();
-                            Game._nextTurnLock = false;
-                            setTimeout(() => {
-                                if (!Game.gameEnded && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
-                                    if (Game.isHost || !isOnlineMode()) {
-                                        doAIAction(player);
-                                    } else {
-                                        Game.currentPlayerIdx++;
-                                        nextTurn();
-                                    }
-                                }
-                            }, 600);
+                        if (Game.isHost && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
+                            setTimeout(() => nextTurn(), 1000);
                         }
                     }
                 } else if ($('screen-waiting').classList.contains('active')) {
@@ -633,7 +563,9 @@
         }
 
         function showWaitingAction(msg) {
-            $('action-area').style.display = 'none';
+            $('action-area').style.display = 'block';
+            const area = $('action-content');
+            area.innerHTML = `<div class="action-title" style="opacity:0.6;">⏳ 等待中</div><div class="action-sub" style="color:var(--text-dim);">${msg}</div><div style="width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--god);border-radius:50%;animation:spin 1s linear infinite;margin:20px auto;"></div>`;
         }
 
         // ==================== 原有游戏逻辑（已集成网络同步） ====================
@@ -646,13 +578,8 @@
             gameEnded: false, channel: null, waitingTimer: null, aiPlayers: [],
             isHost: false, isLocalMultiplayer: false, localPlayerNames: [],
             localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
-            countdownSeconds: 40, fastMode: false, wolfKnifeMode: false,
-            isConfirming: false,
-            _nextTurnLock: false,
-            _matchStartTimeout: null,
-            _startGameTimeout: null,
-            _dayAutoTimer: null,
-            _myName: null
+            countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
+            isConfirming: false
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
         const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
@@ -688,33 +615,12 @@
             showScreen('screen-login');
         }
         function backToMenu() { resetGame(); showScreen('screen-menu'); }
-        function updateOnlineCount() {
-            const el = $('online-count');
-            if (!el) return;
-            // 优先通过 socket 连接状态判断
-            if (socket && socket.connected) {
-                el.textContent = '🟢 在线';
-                el.style.opacity = '1';
-                // 尝试获取具体人数，失败也不影响
-                fetch(`${SERVER_URL}/api/online-count`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data && typeof data.count === 'number') {
-                            el.textContent = `🟢 在线 ${data.count} 人`;
-                        }
-                    })
-                    .catch(() => {});
-            } else {
-                el.textContent = '⚪ 离线';
-                el.style.opacity = '0.6';
-            }
-        }
         function selectMode(mode) {
             Game.mode = mode; Game.isLocalMultiplayer = (mode === 'local');
             const modeSuffix = Game.wolfKnifeMode ? '（狼刀博弈）' : '';
             if (mode === 'room') {
                 $('setup-title').textContent = '房间对战' + modeSuffix; $('setup-btn').textContent = '进入房间';
-                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '直接点击"进入房间"以创建房间，输入六位房间号以加入房间';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '输入房间号，创建或加入房间';
                 $('room-code-section').style.display = 'block'; $('local-players-section').style.display = 'none';
                 Game.isHost = true;
             } else if (mode === 'ai') {
@@ -784,12 +690,7 @@
                     socket.emit('create_room', { name: myName, maxPlayers: Game.selectedCount, mode: Game.wolfKnifeMode ? 'wolf' : 'normal' });
                 } else {
                     Game.roomCode = code;
-                    socket.emit('join_room', { 
-                        code, 
-                        name: myName, 
-                        maxPlayers: Game.selectedCount, 
-                        mode: Game.wolfKnifeMode ? 'wolf' : 'normal' 
-                    });
+                    socket.emit('join_room', { code, name: myName });
                 }
                 return;
             } else if (Game.mode === 'match') {
@@ -817,21 +718,21 @@
                 updateWaitingPlayers();
             } else if (type === 'match') {
                 $('waiting-title').textContent = '正在匹配...';
-                $('waiting-sub').textContent = '寻找其他玩家（10秒后AI补位）';
+                $('waiting-sub').textContent = '寻找其他玩家（超时将补充AI）';
                 $('waiting-room-code').style.display = 'none'; 
                 $('btn-start-now').style.display = 'none';
                 let waitTime = 0;
                 Game.waitingTimer = setInterval(() => {
                     waitTime++; 
-                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}/10秒`;
-                    if (waitTime >= 10) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
+                    $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}秒（超时AI补位）`;
+                    if (waitTime >= 5) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
                 }, 1000);
             }
         }
         function updateWaitingPlayers() {
             const div = $('waiting-players');
             div.innerHTML = `<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家 (${Game.players.length}/${Game.selectedCount})</p>`;
-            Game.players.forEach(p => { const isMe = p.id === Game.myId; div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : (isMe ? '(你)' : '')}</div>`; });
+            Game.players.forEach(p => div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : '(你)'}</div>`);
             for (let i = Game.players.length; i < Game.selectedCount; i++) div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;opacity:0.5;">等待加入...</div>`;
             $('waiting-sub').textContent = `当前 ${Game.players.length}/${Game.selectedCount} 人，等待好友加入...`;
         }
@@ -840,35 +741,13 @@
         }
         function cancelWaiting() { 
             if (Game.waitingTimer) clearInterval(Game.waitingTimer); 
-            if (Game._matchStartTimeout) clearTimeout(Game._matchStartTimeout);
-            if (socket) {
-                if (Game.mode === 'match') socket.emit('cancel_matchmaking');
-                if (Game.mode === 'room' && Game.roomCode) socket.emit('leave_room', { code: Game.roomCode });
-                socket.disconnect();
-                socket = null;
-            }
+            if (socket && Game.mode === 'match') socket.emit('cancel_matchmaking');
             resetGame(); 
             showScreen('screen-menu'); 
         }
         function fillAIAndStart() {
-            if (isOnlineMode() && socket && Game.mode === 'match') {
-                // 在线匹配30秒超时：断开服务器，用AI补位本地开始
-                $('waiting-sub').textContent = '未匹配到玩家，使用AI补位开始游戏...';
-                while (Game.players.length < Game.selectedCount) {
-                    Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
-                }
-                if (socket) {
-                    socket.emit('cancel_matchmaking');
-                    socket.disconnect();
-                    socket = null;
-                }
-                if (Game.waitingTimer) clearInterval(Game.waitingTimer);
-                startGame();
-                return;
-            }
             while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
-            if (Game.waitingTimer) clearInterval(Game.waitingTimer); 
-            startGame();
+            if (Game.waitingTimer) clearInterval(Game.waitingTimer); startGame();
         }
         function startNow() {
             if ((Game.mode === 'room' || Game.mode === 'match') && Game.isHost && socket) {
@@ -877,20 +756,6 @@
                     Game.players.push(createPlayer('p' + Game.players.length, aiName, true));
                 }
                 updateWaitingPlayers();
-
-                // 设置超时保护：5秒内未收到game_started则自动本地开始
-                if (Game._startGameTimeout) clearTimeout(Game._startGameTimeout);
-                Game._startGameTimeout = setTimeout(() => {
-                    if (Game.phase !== 'playing' && !Game.gameEnded) {
-                        addGodMsg('⚠️ 服务器响应超时，本地开始游戏');
-                        if (socket) {
-                            socket.disconnect();
-                            socket = null;
-                        }
-                        startGame();
-                    }
-                }, 5000);
-
                 setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 500);
             } else {
                 const needAI = Game.selectedCount - Game.players.length;
@@ -915,14 +780,11 @@
             Game.isLocalMultiplayer = false; Game.localPlayerNames = []; Game.newlyDeadThisRound = [];
             Game.fastMode = false; clearCountdown(); if (Game.waitingTimer) clearInterval(Game.waitingTimer);
             Game.isConfirming = false;
-            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
-            if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
-            if (Game._startGameTimeout) { clearTimeout(Game._startGameTimeout); Game._startGameTimeout = null; }
             document.getElementById('mode-toggle').style.display = 'block';
         }
         function startGame() {
             document.getElementById('mode-toggle').style.display = 'none';
-            showScreen('screen-game'); Game.phase = 'playing'; if (!isOnlineMode()) shufflePlayers();
+            showScreen('screen-game'); Game.phase = 'playing'; shufflePlayers();
             Game.round = 0; Game.isDay = false; Game.currentPlayerIdx = 0; Game.operations = {};
             Game.history = []; Game.godMessages = []; Game.gameEnded = false; Game.newlyDeadThisRound = [];
             Game.fastMode = false; Game.isConfirming = false;
@@ -981,12 +843,9 @@
                 else { $('my-identity').textContent = '未知'; $('my-identity').style.color = 'var(--text-dim)'; }
             }
         }
-        function shouldFastMode() { if (isOnlineMode()) return false; const alivePlayers = Game.players.filter(p => p.alive); return alivePlayers.length > 0 && alivePlayers.every(p => p.isAI); }
+        function shouldFastMode() { const alivePlayers = Game.players.filter(p => p.alive); return alivePlayers.length > 0 && alivePlayers.every(p => p.isAI); }
         function nextTurn() {
             if (Game.gameEnded) return;
-            if (Game._nextTurnLock) return;
-            Game._nextTurnLock = true;
-            setTimeout(() => { Game._nextTurnLock = false; }, 200);
             if (!Game.fastMode && shouldFastMode()) { Game.fastMode = true; addGodMsg('⚡ AI加速模式启动'); $('action-area').style.display = 'none'; }
             while (Game.currentPlayerIdx < Game.players.length && !Game.players[Game.currentPlayerIdx].alive) Game.currentPlayerIdx++;
             if (Game.currentPlayerIdx >= Game.players.length) { endNight(); return; }
@@ -999,18 +858,15 @@
                     $('action-area').style.display = 'none'; 
                     setTimeout(() => doAIAction(player), Game.fastMode ? 50 : 800);
                 } else {
-                    $('action-area').style.display = 'none';
+                    showWaitingAction(`等待 ${player.name} (AI) 操作...`);
                 }
                 return;
-            }
-            if (!player.isAI) {
-                startCountdown();
             }
             if (isOnlineMode()) {
                 if (player.id === Game.myId) {
                     showPlayerAction(player);
                 } else {
-                    $('action-area').style.display = 'none';
+                    showWaitingAction(`等待 ${player.name} 操作...`);
                 }
             } else {
                 showPlayerAction(player);
@@ -1019,18 +875,12 @@
         function startCountdown() {
             clearCountdown(); const timerEl = $('countdown-timer');
             timerEl.classList.remove('hidden', 'warning', 'danger');
-            Game.countdownSeconds = 40; timerEl.textContent = Game.countdownSeconds;
+            Game.countdownSeconds = 60; timerEl.textContent = Game.countdownSeconds;
             Game.countdownTimer = setInterval(() => {
                 Game.countdownSeconds--; timerEl.textContent = Game.countdownSeconds;
                 if (Game.countdownSeconds <= 10) { timerEl.classList.add('danger'); timerEl.classList.remove('warning'); }
                 else if (Game.countdownSeconds <= 30) { timerEl.classList.add('warning'); timerEl.classList.remove('danger'); }
-                if (Game.countdownSeconds <= 0) { 
-                    clearCountdown(); 
-                    const player = Game.players[Game.currentPlayerIdx];
-                    if (!isOnlineMode() || (player && player.id === Game.myId)) {
-                        autoConfirmAction(); 
-                    }
-                }
+                if (Game.countdownSeconds <= 0) { clearCountdown(); autoConfirmAction(); }
             }, 1000);
         }
         function clearCountdown() {
@@ -1093,7 +943,7 @@
             const area = $('action-content'); const status = getWitchStatusPreview(player);
             area.innerHTML = `<div class="action-title">🧙‍♀️ 状态预览</div><div class="action-sub">查看你的状态预览</div><div style="font-size:56px;margin:24px 0;font-weight:700;color:${status ? 'var(--alive)' : 'var(--wolf)'};">${status ? '✅ 存活' : '❌ 死亡'}</div><button class="btn" style="max-width:200px;" onclick="enterWitchAction()">确认并进入操作</button>`;
         }
-        function enterWitchAction() { const player = Game.players[Game.currentPlayerIdx]; showNightAction(player); }
+        function enterWitchAction() { clearCountdown(); const player = Game.players[Game.currentPlayerIdx]; showNightAction(player); startCountdown(); }
         function selectIdentity(id) {
             Game.selectedIdentity = id;
             document.querySelectorAll('.identity-card').forEach(el => el.classList.remove('selected'));
@@ -1353,6 +1203,7 @@
             else if (player.identity === 'knight') { op.betAlive = Game.tempOperation.betAlive; op.betSelfDie = Game.tempOperation.betSelfDie; if (op.betAlive && op.betSelfDie) op.useDoubleBet = true; }
             else if (player.identity === 'magician') { op.bounce = Game.tempOperation.bounce; op.magicianKnife = Game.tempOperation.magicianKnife; if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) op.swapPair = [...Game.tempOperation.swap]; }
             Game.operations[player.id] = op;
+            Game.currentPlayerIdx++; // 统一推进
             if (isOnlineMode() && socket && Game.roomCode) {
                 socket.emit('player_action', {
                     roomCode: Game.roomCode,
@@ -1360,7 +1211,7 @@
                     playerId: player.id,
                     data: {
                         operation: op,
-                        nextIdx: Game.currentPlayerIdx + 1
+                        currentPlayerIdx: Game.currentPlayerIdx
                     }
                 });
             }
@@ -1373,10 +1224,8 @@
             addGodMsg(`${player.name} 操作完毕`);
             if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (poisonTargets.length >= 2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (Game.tempOperation.antidote) player.hasUsedAntidote = true; }
             Game.currentPlayerIdx++;
-            Game.isConfirming = false;
-            Game._nextTurnLock = false; // 清除锁，确保 nextTurn 能执行
-            if (Game.isLocalMultiplayer) { setTimeout(() => nextTurn(), 100); return; }
-            setTimeout(() => nextTurn(), 50);
+            if (Game.isLocalMultiplayer) { setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 400); return; }
+            setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 300);
         }
 
         function isFirstAI(player) { const firstAI = Game.players.find(p => p.isAI); return firstAI && firstAI.id === player.id; }
@@ -1572,15 +1421,11 @@
                 Game.newlyDeadThisRound.forEach(dead => { broadcastHtml += `<div class="broadcast-item" style="background:#0a0a0f;border-radius:12px;padding:12px 16px;margin:8px 0;border-left:4px solid #ff2d55;font-size:15px;display:flex;align-items:center;gap:8px;">💀 ${dead.name}</div>`; });
                 broadcastHtml += '</div>';
             } else broadcastHtml = '<div class="broadcast-item no-death" style="margin:16px 0;background:#0a0a0f;border-radius:12px;padding:12px 16px;border-left:4px solid #10b981;color:#10b981;font-size:15px;">🌙 平安夜，无人死亡</div>';
-            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<div style="color:var(--text-dim);font-size:14px;margin-top:12px;">3秒后自动进入夜晚...</div>`;
-
-            if (Game._dayAutoTimer) clearTimeout(Game._dayAutoTimer);
-            Game._dayAutoTimer = setTimeout(() => {
-                enterNextNight();
-            }, 3000);
+            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<button class="btn" style="max-width:200px;" onclick="enterNextNight()">继续</button>`;
         }
         function enterNextNight() {
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            Game.currentPlayerIdx = 0; // 重置为第一个玩家
             const alivePlayers = Game.players.filter(p => p.alive);
             if (alivePlayers.length <= 1) {
                 if (alivePlayers.length === 0 && Game.newlyDeadThisRound.length > 0) endGameWithSpecialRules(Game.newlyDeadThisRound);
@@ -1840,10 +1685,7 @@
         }
         window.onload = () => {
             const savedName = localStorage.getItem('dormkill_name'); if (savedName) $('username').value = savedName;
-            $('menu-username').textContent = savedName || '游客';
             initSocket();
-            updateOnlineCount();
-            setInterval(updateOnlineCount, 10000);
         };
         window.onbeforeunload = () => { if (Game.phase === 'playing') return '游戏正在进行中，确定要离开吗？'; };
     </script>
