@@ -238,9 +238,21 @@ io.on('connection', (socket) => {
   });
 
   // 白天结果广播（含权威存活状态，直接透传整个负载）
+  // 注意：用 socket.to 排除发送者——房主已在本地结算并展示，回声会覆盖其"新死亡"数据导致误报平安夜
   socket.on('broadcast_day_result', ({ roomCode, ...rest }) => {
     if (!roomCode) return;
-    io.to(roomCode).emit('day_result', rest);
+    socket.to(roomCode).emit('day_result', rest);
+  });
+
+  // 一局结束后返回房间：房间重新开放等待，移除AI，全员回到等待界面
+  socket.on('return_to_room', ({ code }) => {
+    const room = rooms.get(code);
+    if (!room) return;
+    if (!room.players.some(p => p.socketId === socket.id)) return;
+    room.status = 'waiting';
+    room.players = room.players.filter(p => !p.isAI);
+    room.players.forEach(p => { delete p.gameId; });
+    io.to(code).emit('room_reset', { room: getRoomPublic(room) });
   });
 
   // 夜晚开始等状态同步（透传）
