@@ -176,8 +176,6 @@ io.on('connection', (socket) => {
     queue.push(socket);
     socket.matchKey = key;
 
-    queue.forEach(s => s.emit('matchmaking_waiting', { current: queue.length, required: maxPlayers }));
-
     const createMatchedRoom = (matched) => {
       const code = generateRoomCode();
       const room = {
@@ -196,23 +194,27 @@ io.on('connection', (socket) => {
       });
     };
 
-    if (queue.length >= maxPlayers) {
-      if (matchmakingTimeouts.has(key)) {
-        clearTimeout(matchmakingTimeouts.get(key));
-        matchmakingTimeouts.delete(key);
-      }
+    // 超过房间人数时尽可能多地组成满员房间（如 5 人排 2 人房：2+2 开局，余 1 人等待补位）
+    while (queue.length >= maxPlayers) {
       createMatchedRoom(queue.splice(0, maxPlayers));
-    } else if (queue.length === 1) {
+    }
+
+    if (queue.length === 0) {
       if (matchmakingTimeouts.has(key)) {
         clearTimeout(matchmakingTimeouts.get(key));
-      }
-      const timeout = setTimeout(() => {
-        const currentQueue = matchmaking.get(key) || [];
-        if (currentQueue.length === 0) return;
-        createMatchedRoom(currentQueue.splice(0, Math.min(currentQueue.length, maxPlayers)));
         matchmakingTimeouts.delete(key);
-      }, 5000);
-      matchmakingTimeouts.set(key, timeout);
+      }
+    } else {
+      queue.forEach(s => s.emit('matchmaking_waiting', { current: queue.length, required: maxPlayers }));
+      if (!matchmakingTimeouts.has(key)) {
+        const timeout = setTimeout(() => {
+          const currentQueue = matchmaking.get(key) || [];
+          if (currentQueue.length === 0) return;
+          createMatchedRoom(currentQueue.splice(0, Math.min(currentQueue.length, maxPlayers)));
+          matchmakingTimeouts.delete(key);
+        }, 5000);
+        matchmakingTimeouts.set(key, timeout);
+      }
     }
   });
 
