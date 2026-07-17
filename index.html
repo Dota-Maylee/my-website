@@ -90,6 +90,7 @@
         .identity-card.witch:hover, .identity-card.witch.selected { border-color: var(--witch); background: rgba(168, 85, 247, 0.1); }
         .identity-card.knight:hover, .identity-card.knight.selected { border-color: var(--knight); background: rgba(59, 130, 246, 0.1); }
         .identity-card.magician:hover, .identity-card.magician.selected { border-color: var(--magician); background: rgba(236, 72, 153, 0.1); }
+        .identity-card.puppeteer:hover, .identity-card.puppeteer.selected { border-color: var(--puppeteer); background: rgba(20, 184, 166, 0.1); }
         .identity-card .id-icon { font-size: 48px; }
         .identity-card .id-name { font-weight: 700; font-size: 18px; }
         .action-panel { display: flex; flex-direction: column; gap: 20px; align-items: center; }
@@ -269,59 +270,68 @@
 一、基本设定
   游戏人数为 2 至 4 人，由 AI 担任上帝主持。
   游戏流程：
-    第零晚：所有玩家按照顺序各自选择身份，随后进行当晚操作。
-    后续白天/夜晚交替：白天公布存活情况，夜晚按照顺序各自进行操作。
+    第零晚：所有玩家按顺序各自选择身份，随后进行当晚操作。
+    之后白天与夜晚交替进行：白天公布存活情况，夜晚按顺序各自操作。
 
 二、身份与技能
   1. 狼人
-    刀：指定一名玩家施加 1 把刀（特殊能力（整局一次）：同一晚对两名不同玩家各施加 1 把刀）。
-    盾：指定一名玩家施加 1 个盾。
+    刀：指定一名玩家，对其施加 1 把刀。
+    盾：指定一名玩家，对其施加 1 个盾。
+    特殊能力（整局限一次）：同一晚对两名不同玩家各施加 1 把刀（双刀）。
   2. 女巫
-    毒：指定一或二名玩家分别施加 1 瓶毒药（初始拥有 1 瓶毒药，在每个第奇数序号的晚上可增加 1 瓶毒药）。
-    解药：对任意一名玩家使用解药（仅拥有一瓶解药）。
+    毒：指定一至两名玩家，分别施加 1 瓶毒药。初始拥有 1 瓶毒药，每个奇数序号的夜晚开始时增加 1 瓶。
+    解药：对任意一名玩家使用（整局限一瓶）。
+    状态预览：女巫行动前可查看自己当晚的预估存活状态。
   3. 骑士
-    赌活：指定其他玩家，猜测该玩家当晚存活。
+    赌活：指定一名其他玩家，猜测其当晚存活。
     赌死：指定自己，猜测自己当晚死亡。
-    （二选一）（特殊能力（整局一次）：可同时进行赌活与赌死（双赌））
+    （二者择一；特殊能力（整局限一次）：同一晚同时进行赌活与赌死（双赌））
   4. 魔术师
-    反弹：指定任意一名玩家，当晚所有指向该玩家的刀、盾、毒药、解药都会被反弹回施加者，骑士的赌则直接无效。（仅拥有一次反弹）
+    反弹：指定一名玩家，当晚所有指向该玩家的刀、盾、毒药、解药均反弹回施加者，骑士的赌直接无效（整局限一次）。
     刀：对任意一名玩家施加 1 把刀。
-    交换：指定任意两名玩家，当晚所有指向他们的刀、盾、毒药、解药、反弹会被施加到对方（初始拥有 1 次交换，在每个第奇数序号的晚上可增加 1 次交换）。
+    交换：指定两名玩家，当晚所有指向他们的刀、盾、毒药、解药、反弹改为作用于对方。初始拥有 1 次，每个奇数序号的夜晚开始时增加 1 次。
+  5. 傀儡师
+    傀儡：指定一名玩家成为当晚傀儡。傀儡当晚的刀、盾、毒、赌、交换全部无效（该无效化作用于输出层，不受交换影响，亦不受反弹影响）；傀儡自身使用的反弹与解药不受影响，照常生效。
+    号令：施加傀儡后，可对任意玩家分别使用“向上”与“向下”（两者可同时进行），效果由傀儡的身份决定，且作用于输入层，与对应身份的正常操作完全一致：
+      傀儡为狼人：向上＝盾，向下＝刀。
+      傀儡为女巫：向上＝解药，向下＝毒。
+      傀儡为骑士：向上＝赌活（不可对自己使用），向下＝赌死（只可对自己使用），猜错惩罚与骑士相同。
+      傀儡为魔术师：向上＝反弹护盾，向下＝刀。
+      傀儡为傀儡师：向上、向下均无效。
+    多名傀儡师的傀儡操作相互冲突时，按行动顺序先生效者为准，依次推得最终结果。
+    转变：当场上仅剩两名存活玩家，或存活玩家全部为傀儡师时，傀儡师的技能转变为狼人的技能（刀、盾、双刀，身份仍为傀儡师）。
 
 三、结算步骤
-  每晚按以下五步依次结算：
+  每晚按以下步骤依次结算：
+  第零步：傀儡结算
+    按行动顺序处理所有傀儡师的傀儡与号令：被傀儡者的刀、盾、毒、赌、交换无效化；号令产生的操作进入输入层。
   第一步：交换与反弹
-    反弹化简：2 反弹 ＝ 0 效果
+    反弹化简：2 反弹 ＝ 0 效果。
     考虑交换和反弹，计算操作与玩家之间的对应关系。
   第二步：刀盾毒化简
-    对刀、盾与毒药进行化简。
     化简规则：
-      2 刀 = 1 盾
-      2 盾 = 1 刀
-      1 刀 + 1 盾 = 0 效果
-      2 毒 = 0 效果
-    判定规则：剩余 0 效果、1 盾或 1 刀 + 1 毒时存活；剩余 1 刀、1 毒或 1 盾 + 1 毒时死亡。
+      2 刀 = 1 盾；2 盾 = 1 刀；1 刀 + 1 盾 = 0 效果；2 毒 = 0 效果。
+    判定规则：剩余 0 效果、1 盾、或 1 刀 + 1 毒时存活；剩余 1 刀、1 毒、或 1 盾 + 1 毒时死亡。
     化简后得到原始存活状态。
   第三步：解药第一次生效
-    化简：2 解药 ＝ 0 效果
-    化简后所有受到解药的玩家，状态变为存活。
+    化简：2 解药 ＝ 0 效果。化简后所有受到解药的玩家，状态变为存活。
   第四步：骑士结算
-    每个骑士复制场上状态得到副本，各自独立对副本进行判定：
+    每个骑士（含傀儡师号令产生的赌）复制场上状态得到副本，各自独立对副本进行判定：
       赌活：若目标存活，则使该玩家死亡；若目标死亡，自身死亡，使该玩家存活。
       赌死：若自身死亡，则使自身存活；若自身存活，第一次无效果，之后自身死亡。
       （副本内，赌他人活赌错导致的自己死亡，会覆盖赌自己死赌对导致的自己存活）
-    融合：所有骑士的副本修改完毕后，将副本融合起来得到进一步的玩家存活状态。如果存在骑士的状态在自己的副本和他人的副本中不相同的情况，他人的副本中的这个骑士的状态会覆盖掉自己的副本中的自己的状态。
+    融合：所有副本修改完毕后融合为新的存活状态。若某骑士的状态在自己的副本与他人的副本中不同，以他人副本为准。
   第五步：解药第二次生效
     （化简后）所有受到解药的玩家，状态变为存活。
 
 四、胜利条件
   常规：最后唯一存活的玩家获胜。
   多人同时死亡（最后一晚）：
-    同一身份：共同胜利。若均为女巫，则按行动顺序判定第一个行动的女巫胜利。
-    不同身份：胜利优先级为狼人 > 女巫 > 魔术师 > 骑士。
+    同一身份：共同胜利；若均为女巫，则由行动顺序最前的女巫获胜。
+    不同身份：胜利优先级为 狼人 > 女巫 > 魔术师 > 骑士 > 傀儡师。
 
 五、信息规则
-  玩家之间不可见彼此的身份、操作等信息，公共信息仅包括游戏进程。
+  玩家之间不可见彼此的身份、操作等信息，公共信息仅包括游戏进程（AI 玩家遵守同样的信息限制）。
   游戏结束后开放完整日志，可复盘所有操作。
             </pre>
         </div>
@@ -346,7 +356,16 @@
 
             socket.on('connect', () => {
                 console.log('已连接到服务器');
+                const prevId = mySocketId;
                 mySocketId = socket.id;
+                // 断线重连会分配到新的 socket id：服务器已把旧连接踢出房间/队列，
+                // 本局无法再回到游戏中，直接重置回主菜单，避免界面卡死
+                if (prevId && socket.id !== prevId && isOnlineMode() &&
+                    (Game.phase === 'playing' || $('screen-waiting').classList.contains('active'))) {
+                    alert('连接已断开，你已退出本局游戏');
+                    resetGame();
+                    showScreen('screen-menu');
+                }
             });
 
             // 服务器推送的实时在线人数
@@ -408,9 +427,13 @@
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                 Game.myId = 'p' + room.players.findIndex(p => p.id === you);
-                showWaiting('room');
+                // 匹配成功不进入房间等待页，直接开始游戏（停留当前匹配页显示过渡文案）
+                $('waiting-title').textContent = '✅ 匹配成功！';
+                $('waiting-sub').textContent = '正在进入游戏...';
+                $('waiting-room-code').style.display = 'none';
+                $('btn-start-now').style.display = 'none';
                 if (Game.isHost && room.playerCount >= room.maxPlayers) {
-                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 1000);
+                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 800);
                 }
             });
 
@@ -484,6 +507,18 @@
                             if (op.bounce) actionDesc.push(`反弹护盾 → ${getPlayerName(op.bounce)}`);
                             if (op.magicianKnife) actionDesc.push(`刀 → ${getPlayerName(op.magicianKnife)}`);
                             if (op.swapPair) actionDesc.push(`交换 → ${getPlayerName(op.swapPair[0])} ↔ ${getPlayerName(op.swapPair[1])}`);
+                        } else if (player.identity === 'puppeteer') {
+                            if (op.puppet) {
+                                const t = Game.players.find(p => p.id === op.puppet);
+                                const eff = PUPPET_EFFECTS[t && t.identity] || { up: '无效', down: '无效' };
+                                actionDesc.push(`傀儡 → ${getPlayerName(op.puppet)}`);
+                                if (op.puppetUp) actionDesc.push(`向上（${eff.up}） → ${getPlayerName(op.puppetUp)}`);
+                                if (op.puppetDown) actionDesc.push(`向下（${eff.down}） → ${getPlayerName(op.puppetDown)}`);
+                            }
+                            // 转变后的傀儡师使用狼人技能
+                            if (op.knife) actionDesc.push(`刀 → ${getPlayerName(op.knife)}`);
+                            if (op.doubleKnife) actionDesc.push(`刀 → ${getPlayerName(op.doubleKnife)}（双刀）`);
+                            if (op.shield) actionDesc.push(`盾 → ${getPlayerName(op.shield)}`);
                         }
                         Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
                         addGodMsg(`${player.name} 操作完毕`);
@@ -559,7 +594,9 @@
                     const player = Game.players.find(p => p.id === gameId);
                     if (player) {
                         player.isAI = true;
-                        addGodMsg(`${player.name} 断开连接，由AI接管`);
+                        addGodMsg(`${player.name} 断开连接，由AI托管`);
+                        // 全员可见的掉线广播提示
+                        showToast(`🔌 ${player.name} 已掉线，本局由 AI 托管`);
                         updateGameUI();
                         if (Game.isHost && Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === gameId) {
                             setTimeout(() => nextTurn(), 1000);
@@ -621,11 +658,26 @@
             } else if (player.identity === 'magician') {
                 if (op.bounce) player.hasUsedBounce = true;
                 if (op.swapPair && op.swapPair.length === 2) player.swapCharges--;
-            } else if (player.identity === 'wolf') {
-                if (op.doubleKnife) player.usedDoubleKnife = true;
+            } else if (player.identity === 'wolf' || player.identity === 'puppeteer') {
+                if (op.doubleKnife) player.usedDoubleKnife = true; // 转变后的傀儡师同样消耗双刀
             } else if (player.identity === 'knight') {
                 if (op.useDoubleBet) player.usedDoubleBet = true;
             }
+        }
+
+        // 顶部浮动提示条（掉线广播等全员通知）
+        function showToast(msg, duration = 4000) {
+            let toast = $('game-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'game-toast';
+                toast.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--wolf);color:var(--text);padding:12px 22px;border-radius:12px;font-size:14px;z-index:5000;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none;max-width:90%;text-align:center;';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            if (Game._toastTimer) clearTimeout(Game._toastTimer);
+            Game._toastTimer = setTimeout(() => { toast.style.display = 'none'; }, duration);
         }
 
         function showWaitingAction(msg) {
@@ -644,12 +696,12 @@
             gameEnded: false, channel: null, waitingTimer: null, aiPlayers: [],
             isHost: false, isLocalMultiplayer: false, localPlayerNames: [],
             localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
-            countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
+            countdownSeconds: 30, fastMode: false, wolfKnifeMode: false,
             isConfirming: false, _dayAutoTimer: null, _dayAutoCountdown: null,
             _lastDayRound: -1
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
-        const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
+        const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', puppeteer: '傀儡师', unknown: '未知' };
         const ROUND_NAMES = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
         function $(id) { return document.getElementById(id); }
         function showScreen(id) {
@@ -909,7 +961,7 @@
                 const isCurrent = idx === Game.currentPlayerIdx && !Game.isDay && p.alive;
                 const identityClass = (isMe || Game.wolfKnifeMode) && p.identity ? p.identity : 'unknown';
                 const identityIcon = getIdentityIcon(p.identity);
-                const isNewlyDead = Game.isDay && Game.newlyDeadThisRound.some(d => d.name === p.name);
+                const isNewlyDead = Game.isDay && Game.newlyDeadThisRound.some(d => (d.id !== undefined ? d.id === p.id : d.name === p.name));
                 const div = document.createElement('div');
                 div.className = `player-item ${!p.alive ? 'dead' : ''} ${isCurrent ? 'current' : ''} ${isNewlyDead ? 'newly-dead' : ''}`;
                 let badges = '';
@@ -917,10 +969,12 @@
                     if (p.identity === 'wolf' && p.usedDoubleKnife) badges += '<span class="special-badge badge-double-knife">双刀已用</span>';
                     if (p.identity === 'knight' && p.usedDoubleBet) badges += '<span class="special-badge badge-double-bet">双赌已用</span>';
                     if (p.identity === 'magician' && p.hasUsedBounce) badges += '<span class="special-badge badge-bounce-used">反弹已用</span>';
+                    if (p.identity === 'puppeteer' && isPuppeteerTransformed(p)) badges += '<span class="special-badge" style="background:rgba(20,184,166,0.2);color:var(--puppeteer);border:1px solid var(--puppeteer);">已转变·狼技能</span>';
                 }
                 const statusBadge = p.alive ? '<span class="status-badge alive">存活</span>' : '<span class="status-badge dead">死亡</span>';
+                const aiBadge = (p.isAI && isOnlineMode()) ? '<span class="status-badge" style="background:rgba(148,163,184,0.15);color:var(--text-dim);">AI托管</span>' : '';
                 const showIdentity = isMe || Game.wolfKnifeMode || Game.isLocalMultiplayer;
-                div.innerHTML = `<div class="player-avatar ${identityClass}">${isMe ? identityIcon : '👤'}</div><div class="player-info"><div class="player-name">${p.name} ${isMe && !Game.isLocalMultiplayer ? '(你)' : ''}${badges}</div><div class="player-status">${statusBadge}${showIdentity && p.identity ? ' · ' + IDENTITY_NAMES[p.identity] : ''}</div></div>`;
+                div.innerHTML = `<div class="player-avatar ${identityClass}">${isMe ? identityIcon : '👤'}</div><div class="player-info"><div class="player-name">${p.name} ${isMe && !Game.isLocalMultiplayer ? '(你)' : ''}${badges}</div><div class="player-status">${statusBadge}${aiBadge}${showIdentity && p.identity ? ' · ' + IDENTITY_NAMES[p.identity] : ''}</div></div>`;
                 list.appendChild(div);
             });
             const me = Game.players.find(p => p.id === Game.myId);
@@ -984,7 +1038,7 @@
             if (Game.round === 0 && !player.identity) {
                 if (Game.selectedIdentity) { confirmIdentity(); }
                 else {
-                    const identities = ['wolf', 'witch', 'knight', 'magician'];
+                    const identities = ['wolf', 'witch', 'knight', 'magician', 'puppeteer'];
                     const counts = {}; identities.forEach(id => counts[id] = Game.players.filter(p => p.identity === id).length);
                     const minCount = Math.min(...identities.map(id => counts[id]));
                     const available = identities.filter(id => counts[id] === minCount);
@@ -1027,7 +1081,7 @@
         }
         function showIdentitySelect(player) {
             const area = $('action-content');
-            area.innerHTML = `<div class="action-title">选择你的身份</div><div class="identity-select"><div class="identity-card wolf" onclick="selectIdentity('wolf')"><div class="id-icon">🐺</div><div class="id-name">狼人</div></div><div class="identity-card witch" onclick="selectIdentity('witch')"><div class="id-icon">🧙‍♀️</div><div class="id-name">女巫</div></div><div class="identity-card knight" onclick="selectIdentity('knight')"><div class="id-icon">⚔️</div><div class="id-name">骑士</div></div><div class="identity-card magician" onclick="selectIdentity('magician')"><div class="id-icon">🎩</div><div class="id-name">魔术师</div></div></div><button class="btn" style="max-width:200px;margin-top:20px;background:#2d2d44;color:#64748b;cursor:not-allowed;" id="confirm-id-btn" onclick="confirmIdentity()" disabled>确认选择</button>`;
+            area.innerHTML = `<div class="action-title">选择你的身份</div><div class="identity-select"><div class="identity-card wolf" onclick="selectIdentity('wolf')"><div class="id-icon">🐺</div><div class="id-name">狼人</div></div><div class="identity-card witch" onclick="selectIdentity('witch')"><div class="id-icon">🧙‍♀️</div><div class="id-name">女巫</div></div><div class="identity-card knight" onclick="selectIdentity('knight')"><div class="id-icon">⚔️</div><div class="id-name">骑士</div></div><div class="identity-card magician" onclick="selectIdentity('magician')"><div class="id-icon">🎩</div><div class="id-name">魔术师</div></div><div class="identity-card puppeteer" onclick="selectIdentity('puppeteer')"><div class="id-icon">🎭</div><div class="id-name">傀儡师</div></div></div><button class="btn" style="max-width:200px;margin-top:20px;background:#2d2d44;color:#64748b;cursor:not-allowed;" id="confirm-id-btn" onclick="confirmIdentity()" disabled>确认选择</button>`;
         }
         function showWitchPreview(player) {
             const area = $('action-content'); const status = getWitchStatusPreview(player);
@@ -1071,9 +1125,15 @@
             const occupant = {};
             Game.players.forEach(p => occupant[p.id] = p.id);
 
+            // 仅考虑先于女巫行动的傀儡师（与正式结算口径一致）
+            const priorIds = new Set();
+            for (let i = 0; i < Game.currentPlayerIdx; i++) priorIds.add(Game.players[i].id);
+            const { voided: puppetVoided, derived: puppetDerived } = computePuppetLayer(Game.operations, Game.players, priorIds);
+
             const allSwapPairs = [];
             for (let i = 0; i < Game.currentPlayerIdx; i++) {
                 const pid = Game.players[i].id;
+                if (puppetVoided.has(pid)) continue; // 被傀儡者的交换无效
                 const op = Game.operations[pid];
                 if (op && op.swapPair && op.swapPair.length === 2) allSwapPairs.push([...op.swapPair]);
             }
@@ -1094,6 +1154,13 @@
                     bounceCount[actualTarget] = (bounceCount[actualTarget] || 0) + 1;
                 }
             }
+            // 傀儡号令产生的反弹护盾一并计入
+            puppetDerived.forEach(d => {
+                if (d.type === 'bounce') {
+                    const actualTarget = occupant[d.to];
+                    bounceCount[actualTarget] = (bounceCount[actualTarget] || 0) + 1;
+                }
+            });
             const activeBouncePlayers = new Set();
             Object.entries(bounceCount).forEach(([pid, count]) => {
                 if (count % 2 === 1) activeBouncePlayers.add(pid);
@@ -1102,6 +1169,7 @@
             const inputOps = [];
             for (let i = 0; i < Game.currentPlayerIdx; i++) {
                 const pid = Game.players[i].id;
+                if (puppetVoided.has(pid)) continue; // 被傀儡者的刀/盾/毒无效
                 const op = Game.operations[pid];
                 if (!op) continue;
                 const fromPlayer = Game.players[i];
@@ -1118,6 +1186,14 @@
                 if (op.poison2) addOp('poison', op.poison2);
                 if (op.magicianKnife) addOp('knife', op.magicianKnife);
             }
+            // 傀儡号令产生的刀/盾/毒纳入预览（反弹类号令计入反弹统计）
+            puppetDerived.forEach(d => {
+                if (d.type === 'knife' || d.type === 'shield' || d.type === 'poison') inputOps.push(d);
+                else if (d.type === 'bounce') {
+                    const actualTarget = occupant[d.to];
+                    bounceCount[actualTarget] = (bounceCount[actualTarget] || 0) + 1;
+                }
+            });
 
             function processOp(op, depth) {
                 if (depth > 20) return [];
@@ -1154,10 +1230,11 @@
         }
         function showNightAction(player) {
             $('action-area').style.display = 'block'; const area = $('action-content');
-            Game.tempOperation = { knife: [], shield: null, poison: [], antidote: null, betAlive: null, betSelfDie: null, bounce: null, magicianKnife: null, swap: [] };
-            if (player.identity === 'wolf') {
+            Game.tempOperation = { knife: [], shield: null, poison: [], antidote: null, betAlive: null, betSelfDie: null, bounce: null, magicianKnife: null, swap: [], puppet: null, puppetUp: null, puppetDown: null };
+            if (player.identity === 'wolf' || (player.identity === 'puppeteer' && isPuppeteerTransformed(player))) {
+                const panelTitle = player.identity === 'puppeteer' ? '🎭 傀儡师行动（技能已转变为狼人）' : '🐺 狼人行动';
                 const doubleKnifeStatus = player.usedDoubleKnife ? '已使用' : '未使用';
-                area.innerHTML = `<div class="action-title">🐺 狼人行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(233,69,96,0.1);border:1px solid var(--wolf);border-radius:8px;font-size:13px;color:var(--wolf);">💡 双刀机会（刀两个目标）：${doubleKnifeStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🔪 刀</span><button class="toggle-btn" id="btn-knife" onclick="toggleAction('knife')">不使用</button><div class="target-grid" id="targets-knife" style="display:none;"></div></div><div class="action-row"><span class="action-label">🛡️ 盾</span><button class="toggle-btn" id="btn-shield" onclick="toggleAction('shield')">不使用</button><div class="target-grid" id="targets-shield" style="display:none;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                area.innerHTML = `<div class="action-title">${panelTitle}</div><div style="margin:8px 0;padding:8px 16px;background:rgba(233,69,96,0.1);border:1px solid var(--wolf);border-radius:8px;font-size:13px;color:var(--wolf);">💡 双刀机会（刀两个目标）：${doubleKnifeStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🔪 刀</span><button class="toggle-btn" id="btn-knife" onclick="toggleAction('knife')">不使用</button><div class="target-grid" id="targets-knife" style="display:none;"></div></div><div class="action-row"><span class="action-label">🛡️ 盾</span><button class="toggle-btn" id="btn-shield" onclick="toggleAction('shield')">不使用</button><div class="target-grid" id="targets-shield" style="display:none;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
                 renderTargets('targets-knife', 'knife'); renderTargets('targets-shield', 'shield');
             } else if (player.identity === 'witch') {
                 const totalPoison = player.potions.poison + player.extraPoison; const canPoison = totalPoison > 0; const canAntidote = !player.hasUsedAntidote;
@@ -1172,7 +1249,53 @@
                 const swapStatus = `交换次数: ${player.swapCharges}`;
                 area.innerHTML = `<div class="action-title">🎩 魔术师行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(236,72,153,0.1);border:1px solid var(--magician);border-radius:8px;font-size:13px;color:var(--magician);">💡 反弹护盾（全局一次）：${bounceStatus} | ${swapStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🛡️ 反弹</span><button class="toggle-btn magician-btn" id="btn-bounce" onclick="toggleAction('bounce')" ${player.hasUsedBounce ? 'disabled' : ''}>${player.hasUsedBounce ? '已使用' : '不使用'}</button><div class="target-grid" id="targets-bounce" style="display:none;"></div></div><div class="action-row"><span class="action-label">🔪 刀</span><button class="toggle-btn magician-btn" id="btn-magicianKnife" onclick="toggleAction('magicianKnife')">不使用</button><div class="target-grid" id="targets-magicianKnife" style="display:none;"></div></div><div class="action-row"><span class="action-label">🔄 交换</span><button class="toggle-btn magician-btn" id="btn-swap" onclick="toggleAction('swap')" ${player.swapCharges <= 0 ? 'disabled' : ''}>${player.swapCharges <= 0 ? '次数已用完' : '不使用'}</button><div class="target-grid" id="targets-swap" style="display:none;"></div><div id="swap-status" style="color:var(--text-dim);font-size:13px;margin-top:8px;width:100%;text-align:center;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
                 renderTargets('targets-bounce', 'bounce'); renderTargets('targets-magicianKnife', 'magicianKnife'); renderTargets('targets-swap', 'swap');
+            } else if (player.identity === 'puppeteer') {
+                area.innerHTML = `<div class="action-title">🎭 傀儡师行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(20,184,166,0.1);border:1px solid var(--puppeteer);border-radius:8px;font-size:13px;color:var(--puppeteer);">💡 傀儡：使目标今晚的刀/盾/毒/赌/交换无效（不影响其反弹与解药）；傀儡后可再使用向上/向下号令</div><div class="action-panel"><div class="action-row"><span class="action-label">🎭 傀儡</span><button class="toggle-btn puppeteer-btn" id="btn-puppet" onclick="toggleAction('puppet')">不使用</button><div class="target-grid" id="targets-puppet" style="display:none;"></div></div><div id="puppet-derived" style="width:100%;"></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                renderPuppetTargets(player);
+                renderPuppetDerived(player);
             }
+        }
+        // 傀儡目标选择区：只能选择其他存活玩家
+        function renderPuppetTargets(player) {
+            const container = $('targets-puppet'); if (!container) return; container.innerHTML = '';
+            Game.players.forEach(p => {
+                if (p.id === player.id) return;
+                const btn = document.createElement('div'); btn.className = `target-btn ${!p.alive ? 'dead' : ''}`; btn.dataset.target = p.id;
+                btn.innerHTML = `<span>${p.name}</span>${!p.alive ? '<span style="font-size:10px;color:#64748b;margin-top:2px;">已死亡</span>' : ''}`;
+                if (p.alive) btn.onclick = () => selectTarget('puppet', p.id, btn); else btn.style.pointerEvents = 'none';
+                container.appendChild(btn);
+            });
+        }
+        // 选定傀儡后，根据傀儡身份渲染向上/向下号令区
+        function renderPuppetDerived(player) {
+            const box = $('puppet-derived'); if (!box) return;
+            const targetId = Game.tempOperation.puppet;
+            if (!targetId) { box.innerHTML = `<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:8px 0;">选择傀儡目标后，将按傀儡的身份开放向上/向下号令</div>`; return; }
+            const target = Game.players.find(p => p.id === targetId);
+            const effects = PUPPET_EFFECTS[target && target.identity] || { up: '无效', down: '无效' };
+            if (!target || !target.identity || target.identity === 'puppeteer') {
+                box.innerHTML = `<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:8px 0;">该傀儡的向上/向下号令均无效</div>`;
+                return;
+            }
+            box.innerHTML = `<div class="action-row"><span class="action-label">⬆️ 向上</span><button class="toggle-btn puppeteer-btn" id="btn-puppetUp" onclick="toggleAction('puppetUp')">不使用</button><span style="font-size:13px;color:var(--puppeteer);">＝${effects.up}</span><div class="target-grid" id="targets-puppetUp" style="display:none;"></div></div><div class="action-row"><span class="action-label">⬇️ 向下</span><button class="toggle-btn puppeteer-btn" id="btn-puppetDown" onclick="toggleAction('puppetDown')">不使用</button><span style="font-size:13px;color:var(--puppeteer);">＝${effects.down}</span><div class="target-grid" id="targets-puppetDown" style="display:none;"></div></div>`;
+            // 骑士傀儡：向上（赌活）不可对自己，向下（赌死）只可对自己
+            let upCandidates = Game.players.filter(p => p.alive);
+            let downCandidates = Game.players.filter(p => p.alive);
+            if (target.identity === 'knight') {
+                upCandidates = upCandidates.filter(p => p.id !== player.id);
+                downCandidates = downCandidates.filter(p => p.id === player.id);
+            }
+            renderPuppetGrid('targets-puppetUp', 'puppetUp', upCandidates);
+            renderPuppetGrid('targets-puppetDown', 'puppetDown', downCandidates);
+        }
+        function renderPuppetGrid(containerId, type, candidates) {
+            const container = $(containerId); if (!container) return; container.innerHTML = '';
+            candidates.forEach(p => {
+                const btn = document.createElement('div'); btn.className = 'target-btn'; btn.dataset.target = p.id;
+                btn.innerHTML = `<span>${p.name}</span>`;
+                btn.onclick = () => selectTarget(type, p.id, btn);
+                container.appendChild(btn);
+            });
         }
         function renderTargets(containerId, type) {
             const container = $(containerId); if (!container) return; container.innerHTML = '';
@@ -1253,6 +1376,22 @@
                 else { const names = Game.tempOperation.swap.map(id => getPlayerName(id)).join(' ↔ '); btn.textContent = names; $('swap-status').textContent = `交换: ${names}`; }
                 return;
             }
+            if (type === 'puppet') {
+                Game.tempOperation.puppet = targetId;
+                Game.tempOperation.puppetUp = null; Game.tempOperation.puppetDown = null;
+                if (container) container.querySelectorAll('.target-btn').forEach(b => b.classList.remove('selected'));
+                btnElement.classList.add('selected');
+                const pbtn = $('btn-puppet'); if (pbtn) pbtn.textContent = '已选择';
+                renderPuppetDerived(currentPlayer);
+                return;
+            }
+            if (type === 'puppetUp' || type === 'puppetDown') {
+                Game.tempOperation[type] = targetId;
+                if (container) container.querySelectorAll('.target-btn').forEach(b => b.classList.remove('selected'));
+                btnElement.classList.add('selected');
+                const btn2 = $(`btn-${type}`); if (btn2) btn2.textContent = '已选择';
+                return;
+            }
             if (type === 'antidote' || type === 'magicianKnife' || type === 'bounce') {
                 Game.tempOperation[type] = targetId; if (container) container.querySelectorAll('.target-btn').forEach(b => b.classList.remove('selected')); btnElement.classList.add('selected');
                 const btn = $(`btn-${type}`); if (btn) btn.textContent = '已选择'; return;
@@ -1268,7 +1407,7 @@
             if (!player.alive) { addGodMsg(`${player.name} 已死亡，无法操作`); Game.currentPlayerIdx++; Game.isConfirming = false; nextTurn(); return; }
             const confirmBtn = document.querySelector('#action-content .btn');
             if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.background = '#2d2d44'; confirmBtn.style.color = '#64748b'; confirmBtn.style.cursor = 'not-allowed'; confirmBtn.textContent = '已确认'; }
-            if (player.identity === 'wolf') {
+            if (player.identity === 'wolf' || (player.identity === 'puppeteer' && isPuppeteerTransformed(player))) {
                 const knifeTargets = Game.tempOperation.knife || [];
                 if (knifeTargets.length > 1) { if (player.usedDoubleKnife) { alert('双刀机会已使用，不能同时刀两个目标'); Game.isConfirming = false; if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.background = ''; confirmBtn.style.color = ''; confirmBtn.style.cursor = 'pointer'; confirmBtn.textContent = '确认行动'; } return; } player.usedDoubleKnife = true; }
             } else if (player.identity === 'witch') {
@@ -1292,6 +1431,19 @@
             else if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) op.poison = poisonTargets[0]; if (poisonTargets.length >= 2) op.poison2 = poisonTargets[1]; op.antidote = Game.tempOperation.antidote; }
             else if (player.identity === 'knight') { op.betAlive = Game.tempOperation.betAlive; op.betSelfDie = Game.tempOperation.betSelfDie; if (op.betAlive && op.betSelfDie) op.useDoubleBet = true; }
             else if (player.identity === 'magician') { op.bounce = Game.tempOperation.bounce; op.magicianKnife = Game.tempOperation.magicianKnife; if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) op.swapPair = [...Game.tempOperation.swap]; }
+            else if (player.identity === 'puppeteer') {
+                op.puppet = Game.tempOperation.puppet;
+                if (op.puppet) {
+                    const t = Game.players.find(p => p.id === op.puppet);
+                    const tid = t ? t.identity : null;
+                    if (tid && tid !== 'puppeteer') {
+                        let up = Game.tempOperation.puppetUp, down = Game.tempOperation.puppetDown;
+                        // 骑士傀儡：对自己赌活、对他人赌死均视为无效
+                        if (tid === 'knight') { if (up === player.id) up = null; if (down !== player.id) down = null; }
+                        op.puppetUp = up; op.puppetDown = down;
+                    }
+                }
+            }
             Game.operations[player.id] = op;
             Game.currentPlayerIdx++; // 统一推进
             if (isOnlineMode() && socket && Game.roomCode) {
@@ -1306,10 +1458,19 @@
                 });
             }
             const actionDesc = [];
-            if (player.identity === 'wolf') { const knifeTargets = Game.tempOperation.knife || []; if (knifeTargets.length >= 1) actionDesc.push(`刀 → ${getPlayerName(knifeTargets[0])}`); if (knifeTargets.length >= 2) actionDesc.push(`刀 → ${getPlayerName(knifeTargets[1])}（双刀）`); if (Game.tempOperation.shield) actionDesc.push(`盾 → ${getPlayerName(Game.tempOperation.shield)}`); }
+            if (player.identity === 'wolf' || (player.identity === 'puppeteer' && isPuppeteerTransformed(player))) { const knifeTargets = Game.tempOperation.knife || []; if (knifeTargets.length >= 1) actionDesc.push(`刀 → ${getPlayerName(knifeTargets[0])}`); if (knifeTargets.length >= 2) actionDesc.push(`刀 → ${getPlayerName(knifeTargets[1])}（双刀）`); if (Game.tempOperation.shield) actionDesc.push(`盾 → ${getPlayerName(Game.tempOperation.shield)}`); }
             else if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) actionDesc.push(`毒 → ${getPlayerName(poisonTargets[0])}`); if (poisonTargets.length >= 2) actionDesc.push(`毒 → ${getPlayerName(poisonTargets[1])}（双毒）`); if (Game.tempOperation.antidote) actionDesc.push(`解药 → ${getPlayerName(Game.tempOperation.antidote)}`); }
             else if (player.identity === 'knight') { if (Game.tempOperation.betAlive) actionDesc.push(`赌活 → ${getPlayerName(Game.tempOperation.betAlive)}`); if (Game.tempOperation.betSelfDie) actionDesc.push(`赌死 → 自己`); if (Game.tempOperation.betAlive && Game.tempOperation.betSelfDie) actionDesc.push('【双赌】'); }
             else if (player.identity === 'magician') { if (Game.tempOperation.bounce) actionDesc.push(`反弹护盾 → ${getPlayerName(Game.tempOperation.bounce)}`); if (Game.tempOperation.magicianKnife) actionDesc.push(`刀 → ${getPlayerName(Game.tempOperation.magicianKnife)}`); if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) actionDesc.push(`交换 → ${getPlayerName(Game.tempOperation.swap[0])} ↔ ${getPlayerName(Game.tempOperation.swap[1])}`); }
+            else if (player.identity === 'puppeteer') {
+                if (op.puppet) {
+                    const t = Game.players.find(p => p.id === op.puppet);
+                    const eff = PUPPET_EFFECTS[t && t.identity] || { up: '无效', down: '无效' };
+                    actionDesc.push(`傀儡 → ${getPlayerName(op.puppet)}`);
+                    if (op.puppetUp) actionDesc.push(`向上（${eff.up}） → ${getPlayerName(op.puppetUp)}`);
+                    if (op.puppetDown) actionDesc.push(`向下（${eff.down}） → ${getPlayerName(op.puppetDown)}`);
+                }
+            }
             Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
             addGodMsg(`${player.name} 操作完毕`);
             if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (poisonTargets.length >= 2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (Game.tempOperation.antidote) player.hasUsedAntidote = true; }
@@ -1342,123 +1503,74 @@
                     });
                 }
             }
-            const op = { knife: null, shield: null, doubleKnife: null, poison: null, poison2: null, antidote: null, betAlive: null, betSelfDie: null, useDoubleBet: false, bounce: null, magicianKnife: null, swapPair: null };
+            const op = { knife: null, shield: null, doubleKnife: null, poison: null, poison2: null, antidote: null, betAlive: null, betSelfDie: null, useDoubleBet: false, bounce: null, magicianKnife: null, swapPair: null, puppet: null, puppetUp: null, puppetDown: null };
             const aliveOthers = Game.players.filter(p => p.id !== player.id && p.alive);
             const aliveAll = Game.players.filter(p => p.alive);
+            const pickRandom = (arr) => arr.length > 0 ? randChoice(arr) : null;
 
-            if (player.identity === 'wolf') {
-                const knifeTargets = [];
-                if (aliveOthers.length > 0) {
-                    const shielded = new Set();
-                    Object.values(Game.operations).forEach(o => { if (o.shield) shielded.add(o.shield); });
-                    const unshielded = aliveOthers.filter(p => !shielded.has(p.id));
-                    const primary = unshielded.length > 0 ? randChoice(unshielded).id : randChoice(aliveOthers).id;
-                    knifeTargets.push(primary);
+            // —— AI 打法（信息受限：仅使用公共信息与自身信息，绝不读取其他玩家的操作与身份）——
+            if (player.identity === 'wolf' || (player.identity === 'puppeteer' && isPuppeteerTransformed(player))) {
+                // 狼人：随机刀人；中残局启用双刀扩大击杀；近半概率自盾保命
+                const t1 = pickRandom(aliveOthers);
+                if (t1) op.knife = t1.id;
+                if (Math.random() < 0.45) op.shield = player.id;
+                if (!player.usedDoubleKnife && aliveOthers.length >= 2 && (aliveAll.length <= 3 || Math.random() < 0.35)) {
+                    const rest = aliveOthers.filter(p => p.id !== op.knife);
+                    const t2 = pickRandom(rest);
+                    if (t2) { op.doubleKnife = t2.id; player.usedDoubleKnife = true; }
                 }
-                if (Math.random() > 0.4) op.shield = player.id;
-                if (!player.usedDoubleKnife && aliveOthers.length > 1 && knifeTargets.length > 0) {
-                    const candidates = aliveOthers.filter(p => !knifeTargets.includes(p.id));
-                    if (candidates.length > 0 && Math.random() > 0.3) {
-                        knifeTargets.push(randChoice(candidates).id);
-                        player.usedDoubleKnife = true;
-                    }
-                }
-                if (knifeTargets.length >= 1) op.knife = knifeTargets[0];
-                if (knifeTargets.length >= 2) op.doubleKnife = knifeTargets[1];
-
             } else if (player.identity === 'witch') {
+                // 女巫：利用自身合法的状态预览判断安危，危险则自救；毒药宽裕时积极出手
                 const willDie = !getWitchStatusPreview(player);
-                if (!player.hasUsedAntidote && willDie) {
-                    op.antidote = player.id;
-                }
-                const attackers = [];
-                Object.entries(Game.operations).forEach(([pid, o]) => {
-                    if ((o.knife === player.id || o.doubleKnife === player.id || o.magicianKnife === player.id) && pid !== player.id) {
-                        attackers.push(pid);
-                    }
-                });
+                if (willDie && !player.hasUsedAntidote) op.antidote = player.id;
                 const totalPoison = player.potions.poison + player.extraPoison;
-                if (totalPoison > 0) {
-                    if (attackers.length > 0) {
-                        op.poison = randChoice(attackers);
-                    } else if (aliveOthers.length > 0 && Math.random() > 0.2) {
-                        op.poison = randChoice(aliveOthers).id;
+                if (totalPoison > 0 && aliveOthers.length > 0) {
+                    const useProb = totalPoison >= 2 ? 0.8 : (aliveOthers.length === 1 ? 1 : 0.4);
+                    if (Math.random() < useProb) op.poison = pickRandom(aliveOthers).id;
+                    if (totalPoison >= 2 && op.poison && Math.random() < 0.5) {
+                        const rest = aliveOthers.filter(p => p.id !== op.poison);
+                        const t2 = pickRandom(rest);
+                        if (t2) op.poison2 = t2.id;
                     }
                 }
-                if (totalPoison >= 2 && aliveOthers.length > 1 && op.poison && Math.random() > 0.4) {
-                    const candidates = aliveOthers.filter(p => p.id !== op.poison);
-                    if (candidates.length > 0) op.poison2 = randChoice(candidates).id;
-                }
-
             } else if (player.identity === 'knight') {
-                let attacked = false;
-                Object.entries(Game.operations).forEach(([pid, o]) => {
-                    if (o.knife === player.id || o.doubleKnife === player.id || o.poison === player.id || o.poison2 === player.id || o.magicianKnife === player.id) {
-                        attacked = true;
-                    }
-                });
-                if (attacked) {
-                    op.betSelfDie = player.id;
-                } else if (Math.random() > 0.7) {
-                    op.betSelfDie = player.id;
+                // 骑士：以赌活为主；赌死谨慎使用（错判两次会自杀，仅在无错判记录时小概率尝试）
+                if (aliveOthers.length > 0 && Math.random() < 0.55) op.betAlive = pickRandom(aliveOthers).id;
+                if (player.selfDeathWrongCount === 0 && Math.random() < 0.2) op.betSelfDie = player.id;
+                if (!player.usedDoubleBet && op.betAlive && op.betSelfDie && op.betAlive !== op.betSelfDie) {
+                    op.useDoubleBet = true; player.usedDoubleBet = true;
                 }
-                const attackedTargets = aliveOthers.filter(p => {
-                    let a = false;
-                    Object.values(Game.operations).forEach(o => {
-                        if (o.knife === p.id || o.doubleKnife === p.id || o.poison === p.id || o.poison2 === p.id || o.magicianKnife === p.id) a = true;
-                    });
-                    return a;
-                });
-                if (attackedTargets.length > 0) {
-                    op.betAlive = randChoice(attackedTargets).id;
-                } else if (aliveOthers.length > 0 && Math.random() > 0.5) {
-                    op.betAlive = randChoice(aliveOthers).id;
-                }
-                if (!player.usedDoubleBet && op.betAlive && op.betSelfDie) {
-                    if (op.betAlive === op.betSelfDie) {
-                        op.betAlive = null;
-                    } else {
-                        op.useDoubleBet = true;
-                        player.usedDoubleBet = true;
-                    }
-                }
-
             } else if (player.identity === 'magician') {
-                let attacked = false;
-                Object.entries(Game.operations).forEach(([pid, o]) => {
-                    if (o.knife === player.id || o.doubleKnife === player.id || o.poison === player.id || o.poison2 === player.id || o.magicianKnife === player.id) {
-                        attacked = true;
-                    }
-                });
-                if (player.swapCharges > 0 && attacked && aliveAll.length >= 2) {
-                    const candidates = aliveAll.filter(p => p.id !== player.id);
-                    if (candidates.length > 0) {
-                        op.swapPair = [player.id, randChoice(candidates).id];
-                        player.swapCharges--;
-                    }
+                // 魔术师：每夜免费一刀必用；小概率交换自保；反弹留作关键自保手段
+                const t1 = pickRandom(aliveOthers);
+                if (t1) op.magicianKnife = t1.id;
+                if (player.swapCharges > 0 && aliveAll.length >= 2 && Math.random() < 0.25) {
+                    const rest = aliveAll.filter(p => p.id !== player.id);
+                    const t2 = pickRandom(rest);
+                    if (t2) { op.swapPair = [player.id, t2.id]; player.swapCharges--; }
                 }
-                if (!player.hasUsedBounce && attacked && !op.swapPair) {
-                    op.bounce = player.id;
-                    player.hasUsedBounce = true;
-                } else if (!player.hasUsedBounce && !attacked && Math.random() > 0.5) {
-                    op.bounce = randChoice(aliveAll).id;
+                if (!player.hasUsedBounce && !op.swapPair && Math.random() < 0.35) {
+                    op.bounce = Math.random() < 0.7 ? player.id : pickRandom(aliveAll).id;
                     player.hasUsedBounce = true;
                 }
-                if (aliveOthers.length > 0) {
-                    const attackedTargets = aliveOthers.filter(p => {
-                        let a = false;
-                        Object.values(Game.operations).forEach(o => {
-                            if (o.knife === p.id || o.doubleKnife === p.id || o.magicianKnife === p.id) a = true;
-                        });
-                        return a;
-                    });
-                    if (attackedTargets.length > 0) {
-                        op.magicianKnife = randChoice(attackedTargets).id;
-                    } else {
-                        op.magicianKnife = randChoice(aliveOthers).id;
+            } else if (player.identity === 'puppeteer') {
+                // 傀儡师：随机选择傀儡；随后依据傀儡身份发动号令（傀儡师可合法获知傀儡身份）
+                const puppet = pickRandom(aliveOthers);
+                if (puppet) {
+                    op.puppet = puppet.id;
+                    if (puppet.identity === 'wolf' || puppet.identity === 'magician') {
+                        const t = pickRandom(aliveOthers); if (t) op.puppetDown = t.id; // 向下＝刀
+                        if (Math.random() < 0.6) op.puppetUp = player.id; // 向上＝盾/反弹，自保
+                    } else if (puppet.identity === 'witch') {
+                        if (Math.random() < 0.7) { const t = pickRandom(aliveOthers); if (t) op.puppetDown = t.id; } // 向下＝毒
+                        if (Math.random() < 0.4) op.puppetUp = player.id; // 向上＝解药，自保
+                    } else if (puppet.identity === 'knight') {
+                        if (aliveOthers.length > 0 && Math.random() < 0.5) op.puppetUp = pickRandom(aliveOthers).id; // 向上＝赌活
+                        if (player.selfDeathWrongCount === 0 && Math.random() < 0.25) op.puppetDown = player.id; // 向下＝赌死（只可对自己）
                     }
                 }
             }
+
 
             Game.operations[player.id] = op;
             if (isOnlineMode() && socket && Game.roomCode) {
@@ -1474,10 +1586,19 @@
                 });
             }
             const actionDesc = [];
-            if (player.identity === 'wolf') { if (op.knife) actionDesc.push(`刀 → ${getPlayerName(op.knife)}`); if (op.doubleKnife) actionDesc.push(`刀 → ${getPlayerName(op.doubleKnife)}（双刀）`); if (op.shield) actionDesc.push(`盾 → ${getPlayerName(op.shield)}`); }
+            if (player.identity === 'wolf' || (player.identity === 'puppeteer' && isPuppeteerTransformed(player))) { if (op.knife) actionDesc.push(`刀 → ${getPlayerName(op.knife)}`); if (op.doubleKnife) actionDesc.push(`刀 → ${getPlayerName(op.doubleKnife)}（双刀）`); if (op.shield) actionDesc.push(`盾 → ${getPlayerName(op.shield)}`); }
             else if (player.identity === 'witch') { if (op.poison) actionDesc.push(`毒 → ${getPlayerName(op.poison)}`); if (op.poison2) actionDesc.push(`毒 → ${getPlayerName(op.poison2)}（双毒）`); if (op.antidote) actionDesc.push(`解药 → ${getPlayerName(op.antidote)}`); }
             else if (player.identity === 'knight') { if (op.betAlive) actionDesc.push(`赌活 → ${getPlayerName(op.betAlive)}`); if (op.betSelfDie) actionDesc.push(`赌死 → 自己`); if (op.useDoubleBet) actionDesc.push('【双赌】'); }
             else if (player.identity === 'magician') { if (op.bounce) actionDesc.push(`反弹护盾 → ${getPlayerName(op.bounce)}`); if (op.magicianKnife) actionDesc.push(`刀 → ${getPlayerName(op.magicianKnife)}`); if (op.swapPair) actionDesc.push(`交换 → ${getPlayerName(op.swapPair[0])} ↔ ${getPlayerName(op.swapPair[1])}`); }
+            else if (player.identity === 'puppeteer') {
+                if (op.puppet) {
+                    const t = Game.players.find(p => p.id === op.puppet);
+                    const eff = PUPPET_EFFECTS[t && t.identity] || { up: '无效', down: '无效' };
+                    actionDesc.push(`傀儡 → ${getPlayerName(op.puppet)}`);
+                    if (op.puppetUp) actionDesc.push(`向上（${eff.up}） → ${getPlayerName(op.puppetUp)}`);
+                    if (op.puppetDown) actionDesc.push(`向下（${eff.down}） → ${getPlayerName(op.puppetDown)}`);
+                }
+            }
             Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
             if (player.identity === 'witch') { if (op.poison) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (op.poison2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (op.antidote) player.hasUsedAntidote = true; }
             if (player.identity === 'magician' && op.bounce) player.hasUsedBounce = true;
@@ -1496,7 +1617,7 @@
             const results = resolveNight(Game.operations, Game.players);
             const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
             Game.players.forEach(p => { const survived = results[p.id]; if (p.alive && !survived) p.alive = false; });
-            Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
+            Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ id: p.id, name: p.name, alive: p.alive, identity: p.identity }));
             Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
             if (Game.isHost && isOnlineMode() && socket && Game.roomCode) {
                 socket.emit('broadcast_day_result', {
@@ -1592,12 +1713,54 @@
                 if (Game.fastMode) setTimeout(() => nextTurn(), 50); else nextTurn();
             }
         }
+        // 第零步：傀儡结算层（先于交换与反弹）
+        // 返回 voided（被傀儡无效化的玩家）与 derived（号令产生的输入层操作）
+        function computePuppetLayer(operations, players, onlyIds = null) {
+            const voided = new Set();
+            const derived = [];
+            const aliveSet = new Set(players.filter(p => p.alive).map(p => p.id));
+            players.forEach(p => { // 按行动顺序处理：傀儡操作冲突时先行动者优先
+                if (onlyIds && !onlyIds.has(p.id)) return;
+                if (p.identity !== 'puppeteer' || !aliveSet.has(p.id) || voided.has(p.id)) return;
+                const op = operations[p.id];
+                if (!op || !op.puppet) return;
+                const target = players.find(x => x.id === op.puppet);
+                if (!target) return;
+                voided.add(target.id); // 傀儡的刀/盾/毒/赌/交换无效（反弹与解药不受影响）
+                const up = op.puppetUp, down = op.puppetDown;
+                switch (target.identity) { // 号令效果由傀儡身份决定，作用于输入层
+                    case 'wolf':
+                        if (up) derived.push({ type: 'shield', from: p.id, to: up });
+                        if (down) derived.push({ type: 'knife', from: p.id, to: down });
+                        break;
+                    case 'witch':
+                        if (up) derived.push({ type: 'antidote', from: p.id, to: up });
+                        if (down) derived.push({ type: 'poison', from: p.id, to: down });
+                        break;
+                    case 'knight':
+                        if (up && up !== p.id) derived.push({ type: 'betAlive', from: p.id, to: up, noSwap: true });
+                        if (down && down === p.id) derived.push({ type: 'betSelfDie', from: p.id, to: p.id, noSwap: true });
+                        break;
+                    case 'magician':
+                        if (up) derived.push({ type: 'bounce', from: p.id, to: up });
+                        if (down) derived.push({ type: 'knife', from: p.id, to: down });
+                        break;
+                    default: break; // 傀儡为傀儡师或身份未知：号令无效
+                }
+            });
+            return { voided, derived };
+        }
+
         function resolveNight(operations, players) {
             const occupant = {};
             players.forEach(p => occupant[p.id] = p.id);
 
+            // 第零步：傀儡结算（最优先，先于交换与反弹）
+            const { voided: puppetVoided, derived: puppetDerived } = computePuppetLayer(operations, players);
+
             const allSwapPairs = [];
             Object.entries(operations).forEach(([pid, op]) => {
+                if (puppetVoided.has(pid)) return; // 被傀儡者的交换无效
                 if (op.swapPair && op.swapPair.length === 2) allSwapPairs.push([...op.swapPair]);
             });
 
@@ -1616,6 +1779,12 @@
                     inputOps.push({ type, from: fromId, to: targetPos });
                 };
 
+                if (puppetVoided.has(fromId)) {
+                    // 被傀儡者：刀/盾/毒/赌/交换全部无效，仅解药照常生效（反弹在下方统一统计）
+                    if (op.antidote) addOp('antidote', op.antidote);
+                    return;
+                }
+
                 if (op.knife) addOp('knife', op.knife);
                 if (op.doubleKnife) addOp('knife', op.doubleKnife);
                 if (op.shield) addOp('shield', op.shield);
@@ -1627,12 +1796,23 @@
                 if (op.betSelfDie) inputOps.push({ type: 'betSelfDie', from: fromId, to: op.betSelfDie, noSwap: true });
             });
 
+            // 傀儡号令产生的操作进入输入层（反弹类号令在下方统一统计）
+            puppetDerived.forEach(d => { if (d.type !== 'bounce') inputOps.push(d); });
+
             const bounceCount = {};
             players.forEach(p => bounceCount[p.id] = 0);
-            
+
             Object.entries(operations).forEach(([pid, op]) => {
+                // 被傀儡者的反弹护盾不受影响，照常生效
                 if (op.bounce) {
                     const actualTarget = occupant[op.bounce];
+                    bounceCount[actualTarget]++;
+                }
+            });
+            // 傀儡号令产生的反弹护盾（输入层效果）
+            puppetDerived.forEach(d => {
+                if (d.type === 'bounce') {
+                    const actualTarget = occupant[d.to];
                     bounceCount[actualTarget]++;
                 }
             });
@@ -1703,7 +1883,9 @@
             });
 
             const photos = {};
-            const knights = players.filter(p => p.identity === 'knight' && p.alive);
+            // 骑士及傀儡号令产生的赌局参与者，均按骑士规则结算
+            const knights = players.filter(p => p.alive && (p.identity === 'knight' ||
+                puppetDerived.some(d => d.from === p.id && (d.type === 'betAlive' || d.type === 'betSelfDie'))));
             knights.forEach(knight => {
                 const op = operations[knight.id];
                 const photo = { ...stateS1 };
@@ -1737,7 +1919,8 @@
                 if (otherKnightOp !== null) {
                     stateAfterKnights[p.id] = otherKnightOp;
                 } else {
-                    if (p.identity === 'knight' && photos[p.id]) {
+                    // 拥有副本者（骑士及傀儡号令的赌局参与者）应用自己的副本，其余保持原状
+                    if (photos[p.id]) {
                         stateAfterKnights[p.id] = photos[p.id][p.id];
                     } else {
                         stateAfterKnights[p.id] = stateS1[p.id];
@@ -1762,14 +1945,15 @@
             $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
             const deadPlayers = newlyDead.map(r => ({ ...r, playerObj: Game.players.find(p => p.name === r.name) })).filter(d => d.playerObj);
             const byIdentity = {}; deadPlayers.forEach(d => { if (!byIdentity[d.identity]) byIdentity[d.identity] = []; byIdentity[d.identity].push(d); });
+            const idxOf = (d) => Game.players.findIndex(p => (d.id !== undefined ? p.id === d.id : p.name === d.name));
             let winners = []; const identities = Object.keys(byIdentity);
             if (identities.length === 1) {
                 const id = identities[0];
-                if (id === 'witch') { let firstWitch = null, firstIdx = Infinity; byIdentity[id].forEach(d => { const idx = Game.players.findIndex(p => p.name === d.name); if (idx < firstIdx) { firstIdx = idx; firstWitch = d; } }); winners = [firstWitch]; }
+                if (id === 'witch') { let firstWitch = null, firstIdx = Infinity; byIdentity[id].forEach(d => { const idx = idxOf(d); if (idx > -1 && idx < firstIdx) { firstIdx = idx; firstWitch = d; } }); winners = [firstWitch]; }
                 else winners = byIdentity[id];
             } else {
-                const priority = ['wolf', 'witch', 'magician', 'knight'];
-                for (const id of priority) { if (byIdentity[id] && byIdentity[id].length > 0) { if (id === 'witch') { let firstWitch = null, firstIdx = Infinity; byIdentity[id].forEach(d => { const idx = Game.players.findIndex(p => p.name === d.name); if (idx < firstIdx) { firstIdx = idx; firstWitch = d; } }); winners = [firstWitch]; } else winners = byIdentity[id]; break; } }
+                const priority = ['wolf', 'witch', 'magician', 'knight', 'puppeteer'];
+                for (const id of priority) { if (byIdentity[id] && byIdentity[id].length > 0) { if (id === 'witch') { let firstWitch = null, firstIdx = Infinity; byIdentity[id].forEach(d => { const idx = idxOf(d); if (idx > -1 && idx < firstIdx) { firstIdx = idx; firstWitch = d; } }); winners = [firstWitch]; } else winners = byIdentity[id]; break; } }
             }
             showScreen('screen-end');
             if (winners.length === 1) { const w = winners[0]; const isMe = w.playerObj && w.playerObj.id === Game.myId; $('winner-title').textContent = isMe ? '🎉 你赢了！' : `${w.name} 获胜！`; $('winner-desc').textContent = ''; }
