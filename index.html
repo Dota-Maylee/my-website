@@ -128,6 +128,12 @@
         .modal-content .knight-text { color: var(--knight); }
         .modal-content .magician-text { color: var(--magician); }
         .modal-content .puppeteer-text { color: var(--puppeteer); }
+        .rules-doc { font-size: 14px; line-height: 1.8; color: var(--text-dim); }
+        .rules-title { font-size: 20px; font-weight: 700; color: var(--god); margin-bottom: 16px; }
+        .rules-h1 { color: var(--god); font-weight: 700; font-size: 15px; margin: 18px 0 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+        .rules-h2 { color: var(--text); font-weight: 700; font-size: 14px; margin: 12px 0 4px; }
+        .rules-doc .indent1 { padding-left: 16px; margin: 2px 0; }
+        .rules-doc .indent2 { padding-left: 32px; margin: 2px 0; }
         .modal-content .god-text { color: var(--god); }
         .modal-content .step-box { background: var(--bg); border-radius: 12px; padding: 16px 20px; margin: 8px 0 16px 0; border-left: 4px solid var(--god); }
         .modal-content .step-box .step-title { font-weight: 700; color: var(--text); margin-bottom: 4px; }
@@ -267,77 +273,79 @@
     <div id="rules-modal" class="modal-overlay">
         <div class="modal-content">
             <button class="modal-close" onclick="toggleRules()">×</button>
-            <pre style="white-space: pre-wrap; font-family: inherit; color: var(--text); line-height: 1.8; font-size: 15px; margin: 0; overflow-wrap: break-word; word-break: break-word;">
-宿舍杀 · 完整规则
+            <div class="rules-doc">
+                <div class="rules-title">宿舍杀 · 完整规则</div>
 
-一、基本设定
-  游戏人数为 3 至 5 人，由 AI 担任上帝主持。
-  游戏流程：
-    第零晚：所有玩家按顺序各自选择身份，随后进行当晚操作。
-    之后白天与夜晚交替进行：白天公布存活情况，夜晚按顺序各自操作。
+                <div class="rules-h1">一、基本设定</div>
+                <div class="rules-p indent1">游戏人数为 3 至 5 人，由 AI 担任上帝主持。</div>
+                <div class="rules-p indent1">游戏流程：</div>
+                <div class="rules-p indent2">第零晚：所有玩家按顺序各自选择身份，随后进行当晚操作。</div>
+                <div class="rules-p indent2">之后白天与夜晚交替进行：白天公布存活情况，夜晚按顺序各自操作。</div>
 
-二、身份与技能
-  1. 狼人
-    刀：指定一名玩家，对其施加 1 把刀。
-    盾：指定一名玩家，对其施加 1 个盾。
-    特殊能力（整局限一次）：同一晚对两名不同玩家各施加 1 把刀（双刀）。
-  2. 女巫
-    毒：指定一至两名玩家，分别施加 1 瓶毒药。初始拥有 1 瓶毒药，每个奇数序号的夜晚开始时增加 1 瓶。
-    解药：对任意一名玩家使用（整局限一瓶）。
-    状态预览：女巫行动前可查看自己当晚的预估存活状态。
-  3. 骑士
-    赌活：指定一名其他玩家，猜测其当晚存活。
-    赌死：指定自己，猜测自己当晚死亡。
-    （二者择一；特殊能力（整局限一次）：同一晚同时进行赌活与赌死（双赌））
-  4. 魔术师
-    反弹：指定一名玩家，当晚所有指向该玩家的刀、盾、毒药、解药均反弹回施加者，骑士的赌直接无效（整局限一次）。
-    刀：对任意一名玩家施加 1 把刀。
-    交换：指定两名玩家，当晚所有指向他们的刀、盾、毒药、解药、反弹改为作用于对方。初始拥有 1 次，每个奇数序号的夜晚开始时增加 1 次。
-  5. 傀儡师
-    傀儡：指定一名玩家成为当晚傀儡。傀儡当晚的刀、盾、毒、赌、交换全部无效（该无效化作用于输出层，不受交换影响，亦不受反弹影响）；傀儡自身使用的反弹与解药不受影响，照常生效。
-    号令：施加傀儡后，可对任意玩家分别使用“向上”与“向下”（两者可同时进行），效果由傀儡的身份决定，且作用于输入层，与对应身份的正常操作完全一致：
-      傀儡为狼人：向上＝盾，向下＝刀。
-      傀儡为女巫：向上＝解药，向下＝毒。
-      傀儡为骑士：向上＝赌活（不可对自己使用），向下＝赌死（只可对自己使用），猜错惩罚与骑士相同。
-      傀儡为魔术师：向上＝反弹护盾，向下＝刀。
-      傀儡为傀儡师：向上、向下均无效。
-    傀儡师无法得知傀儡的身份，号令效果在结算时按傀儡的身份确定。
-    多名傀儡师的傀儡操作相互冲突时，由最后行动的傀儡师的操作先生效，再按行动顺序从后向前依次推得最终结果。
-    转变：当场上仅剩两名存活玩家，或存活玩家全部为傀儡师时，傀儡师的技能转变为狼人的技能（刀、盾、双刀，身份仍为傀儡师）。转变判定仅在白天进行。
+                <div class="rules-h1">二、身份与技能</div>
+                <div class="rules-h2" style="color:var(--wolf);">1. 狼人</div>
+                <div class="rules-p indent1">刀：指定一名玩家，对其施加 1 把刀。</div>
+                <div class="rules-p indent1">盾：指定一名玩家，对其施加 1 个盾。</div>
+                <div class="rules-p indent1">特殊能力（整局限一次）：同一晚对两名不同玩家各施加 1 把刀（双刀）。</div>
+                <div class="rules-h2" style="color:var(--witch);">2. 女巫</div>
+                <div class="rules-p indent1">毒：指定一至两名玩家，分别施加 1 瓶毒药。初始拥有 1 瓶毒药，每个奇数序号的夜晚开始时增加 1 瓶。</div>
+                <div class="rules-p indent1">解药：对任意一名玩家使用（整局限一瓶）。</div>
+                <div class="rules-p indent1">状态预览：女巫行动前可查看自己当晚的预估存活状态。</div>
+                <div class="rules-h2" style="color:var(--knight);">3. 骑士</div>
+                <div class="rules-p indent1">赌活：指定一名其他玩家，猜测其当晚存活。</div>
+                <div class="rules-p indent1">赌死：指定自己，猜测自己当晚死亡。</div>
+                <div class="rules-p indent1">（二者择一；特殊能力（整局限一次）：同一晚同时进行赌活与赌死（双赌））</div>
+                <div class="rules-h2" style="color:var(--magician);">4. 魔术师</div>
+                <div class="rules-p indent1">反弹：指定一名玩家，当晚所有指向该玩家的刀、盾、毒药、解药均反弹回施加者，骑士的赌直接无效（整局限一次）。</div>
+                <div class="rules-p indent1">刀：对任意一名玩家施加 1 把刀。</div>
+                <div class="rules-p indent1">交换：指定两名玩家，当晚所有指向他们的刀、盾、毒药、解药、反弹改为作用于对方。初始拥有 1 次，每个奇数序号的夜晚开始时增加 1 次。</div>
+                <div class="rules-h2" style="color:var(--puppeteer);">5. 傀儡师</div>
+                <div class="rules-p indent1">傀儡：指定一名玩家成为当晚傀儡。傀儡当晚的刀、盾、毒、赌、交换全部无效（该无效化作用于输出层，不受交换影响，亦不受反弹影响）；傀儡自身使用的反弹与解药不受影响，照常生效。</div>
+                <div class="rules-p indent1">号令：施加傀儡后，可对任意玩家分别使用“向上”与“向下”（两者可同时进行），效果由傀儡的身份决定，且作用于输入层，与对应身份的正常操作完全一致：</div>
+                <div class="rules-p indent2">傀儡为狼人：向上＝盾，向下＝刀。</div>
+                <div class="rules-p indent2">傀儡为女巫：向上＝解药，向下＝毒。</div>
+                <div class="rules-p indent2">傀儡为骑士：向上＝赌活（不可对自己使用），向下＝赌死（只可对自己使用），猜错惩罚与骑士相同。</div>
+                <div class="rules-p indent2">傀儡为魔术师：向上＝反弹护盾，向下＝刀。</div>
+                <div class="rules-p indent2">傀儡为傀儡师：向上、向下均无效。</div>
+                <div class="rules-p indent1">傀儡师无法得知傀儡的身份，号令效果在结算时按傀儡的身份确定。</div>
+                <div class="rules-p indent1">傀儡师之间的矛盾必然形成傀儡链（傀儡师 A 傀儡傀儡师 B，傀儡师 B 傀儡某角色，依此类推）：</div>
+                <div class="rules-p indent2">傀儡链呈直线型时，由行动顺序最前的傀儡师的操作先生效，再按行动顺序从前向后依次推得最终结果。</div>
+                <div class="rules-p indent2">傀儡链呈闭环时，由行动顺序最后的傀儡师的操作先生效，再按行动顺序从后向前依次推得最终结果。</div>
+                <div class="rules-p indent1">转变：当场上仅剩两名存活玩家，或存活玩家全部为傀儡师时，傀儡师的技能转变为狼人的技能（刀、盾、双刀，身份仍为傀儡师）。转变判定仅在白天进行。</div>
 
-三、结算步骤
-  每晚按以下步骤依次结算：
-  第零步：傀儡结算
-    按行动顺序处理所有傀儡师的傀儡与号令：被傀儡者的刀、盾、毒、赌、交换无效化；号令产生的操作进入输入层。
-  第一步：交换与反弹
-    反弹化简：2 反弹 ＝ 0 效果。
-    考虑交换和反弹，计算操作与玩家之间的对应关系。
-  第二步：刀盾毒化简
-    化简规则：
-      2 刀 = 1 盾；2 盾 = 1 刀；1 刀 + 1 盾 = 0 效果；2 毒 = 0 效果。
-    判定规则：剩余 0 效果、1 盾、或 1 刀 + 1 毒时存活；剩余 1 刀、1 毒、或 1 盾 + 1 毒时死亡。
-    化简后得到原始存活状态。
-  第三步：解药第一次生效
-    化简：2 解药 ＝ 0 效果。化简后所有受到解药的玩家，状态变为存活。
-  第四步：骑士结算
-    每个骑士（含傀儡师号令产生的赌）复制场上状态得到副本，各自独立对副本进行判定：
-      赌活：若目标存活，则使该玩家死亡；若目标死亡，自身死亡，使该玩家存活。
-      赌死：若自身死亡，则使自身存活；若自身存活，第一次无效果，之后自身死亡。
-      （副本内，赌他人活赌错导致的自己死亡，会覆盖赌自己死赌对导致的自己存活）
-    融合：所有副本修改完毕后融合为新的存活状态。若某骑士的状态在自己的副本与他人的副本中不同，以他人副本为准。
-  第五步：解药第二次生效
-    （化简后）所有受到解药的玩家，状态变为存活。
+                <div class="rules-h1">三、结算步骤</div>
+                <div class="rules-p indent1">每晚按以下步骤依次结算：</div>
+                <div class="rules-h2">第零步：傀儡结算</div>
+                <div class="rules-p indent1">按傀儡链规则处理所有傀儡师的傀儡与号令：被傀儡者的刀、盾、毒、赌、交换无效化；号令产生的操作进入输入层。</div>
+                <div class="rules-h2">第一步：交换与反弹</div>
+                <div class="rules-p indent1">反弹化简：2 反弹 ＝ 0 效果。</div>
+                <div class="rules-p indent1">考虑交换和反弹，计算操作与玩家之间的对应关系。</div>
+                <div class="rules-h2">第二步：刀盾毒化简</div>
+                <div class="rules-p indent1">化简规则：</div>
+                <div class="rules-p indent2">2 刀 = 1 盾；2 盾 = 1 刀；1 刀 + 1 盾 = 0 效果；2 毒 = 0 效果。</div>
+                <div class="rules-p indent1">判定规则：剩余 0 效果、1 盾、或 1 刀 + 1 毒时存活；剩余 1 刀、1 毒、或 1 盾 + 1 毒时死亡。</div>
+                <div class="rules-p indent1">化简后得到原始存活状态。</div>
+                <div class="rules-h2">第三步：解药第一次生效</div>
+                <div class="rules-p indent1">化简：2 解药 ＝ 0 效果。化简后所有受到解药的玩家，状态变为存活。</div>
+                <div class="rules-h2">第四步：骑士结算</div>
+                <div class="rules-p indent1">每个骑士（含傀儡师号令产生的赌）复制场上状态得到副本，各自独立对副本进行判定：</div>
+                <div class="rules-p indent2">赌活：若目标存活，则使该玩家死亡；若目标死亡，自身死亡，使该玩家存活。</div>
+                <div class="rules-p indent2">赌死：若自身死亡，则使自身存活；若自身存活，第一次无效果，之后自身死亡。</div>
+                <div class="rules-p indent2">（副本内，赌他人活赌错导致的自己死亡，会覆盖赌自己死赌对导致的自己存活）</div>
+                <div class="rules-p indent1">融合：所有副本修改完毕后融合为新的存活状态。若某骑士的状态在自己的副本与他人的副本中不同，以他人副本为准。</div>
+                <div class="rules-h2">第五步：解药第二次生效</div>
+                <div class="rules-p indent1">（化简后）所有受到解药的玩家，状态变为存活。</div>
 
-四、胜利条件
-  常规：最后唯一存活的玩家获胜。
-  多人同时死亡（最后一晚）：
-    同一身份：共同胜利；若均为女巫，则由行动顺序最前的女巫获胜。
-    不同身份：胜利优先级为 狼人 > 女巫 > 魔术师 > 骑士 > 傀儡师。
+                <div class="rules-h1">四、胜利条件</div>
+                <div class="rules-p indent1">常规：最后唯一存活的玩家获胜。</div>
+                <div class="rules-p indent1">多人同时死亡（最后一晚）：</div>
+                <div class="rules-p indent2">同一身份：共同胜利；若均为女巫，则由行动顺序最前的女巫获胜。</div>
+                <div class="rules-p indent2">不同身份：胜利优先级为 狼人 > 女巫 > 魔术师 > 骑士 > 傀儡师。</div>
 
-五、信息规则
-  玩家之间不可见彼此的身份、操作等信息，公共信息仅包括游戏进程（AI 玩家遵守同样的信息限制）。
-  游戏结束后开放完整日志，可复盘所有操作。
-            </pre>
+                <div class="rules-h1">五、信息规则</div>
+                <div class="rules-p indent1">玩家之间不可见彼此的身份、操作等信息，公共信息仅包括游戏进程（AI 玩家遵守同样的信息限制）。</div>
+                <div class="rules-p indent1">游戏结束后开放完整日志，可复盘所有操作。</div>
+            </div>
         </div>
     </div>
     <script>
@@ -1733,11 +1741,33 @@
             const voided = new Set();
             const derived = [];
             const aliveSet = new Set(players.filter(p => p.alive).map(p => p.id));
-            [...players].reverse().forEach(p => { // 傀儡操作冲突时，最后行动的傀儡师先生效，再依次向前推
-                if (onlyIds && !onlyIds.has(p.id)) return;
-                if (p.identity !== 'puppeteer' || !aliveSet.has(p.id) || voided.has(p.id)) return;
+            // 参与傀儡操作的傀儡师（按行动顺序）
+            const actors = players.filter(p =>
+                p.identity === 'puppeteer' && aliveSet.has(p.id) &&
+                (!onlyIds || onlyIds.has(p.id)) &&
+                operations[p.id] && operations[p.id].puppet);
+            const actorIds = new Set(actors.map(p => p.id));
+            // 傀儡链指向：傀儡师 → 傀儡师
+            const nextOf = {};
+            actors.forEach(p => { if (actorIds.has(operations[p.id].puppet)) nextOf[p.id] = operations[p.id].puppet; });
+            // 判定闭环：沿链前进，若回到链中节点则该段为闭环
+            const inCycle = new Set();
+            actors.forEach(p => {
+                const path = [];
+                const seen = new Set();
+                let cur = p.id;
+                while (cur && nextOf[cur] && !seen.has(cur)) { seen.add(cur); path.push(cur); cur = nextOf[cur]; }
+                if (cur && seen.has(cur)) {
+                    const idx = path.indexOf(cur);
+                    for (let i = idx; i < path.length; i++) inCycle.add(path[i]);
+                }
+            });
+            // 直线型傀儡链：行动顺序最前的傀儡师操作先生效（正序）；
+            // 闭环傀儡链：行动顺序最后的傀儡师操作先生效（逆序）
+            const orderedActors = [...actors.filter(p => !inCycle.has(p.id)), ...actors.filter(p => inCycle.has(p.id)).reverse()];
+            orderedActors.forEach(p => {
+                if (voided.has(p.id)) return; // 已被无效化的傀儡师，其操作失效
                 const op = operations[p.id];
-                if (!op || !op.puppet) return;
                 const target = players.find(x => x.id === op.puppet);
                 if (!target) return;
                 voided.add(target.id); // 傀儡的刀/盾/毒/赌/交换无效（反弹与解药不受影响）
