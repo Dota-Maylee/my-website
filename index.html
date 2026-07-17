@@ -301,6 +301,7 @@
       傀儡为骑士：向上＝赌活（不可对自己使用），向下＝赌死（只可对自己使用），猜错惩罚与骑士相同。
       傀儡为魔术师：向上＝反弹护盾，向下＝刀。
       傀儡为傀儡师：向上、向下均无效。
+    傀儡师无法得知傀儡的身份，号令效果在结算时按傀儡的身份确定。
     多名傀儡师的傀儡操作相互冲突时，按行动顺序先生效者为准，依次推得最终结果。
     转变：当场上仅剩两名存活玩家，或存活玩家全部为傀儡师时，傀儡师的技能转变为狼人的技能（刀、盾、双刀，身份仍为傀儡师）。
 
@@ -1257,7 +1258,7 @@
                 renderTargets('targets-knife', 'knife'); renderTargets('targets-shield', 'shield');
             } else if (player.identity === 'witch') {
                 const totalPoison = player.potions.poison + player.extraPoison; const canPoison = totalPoison > 0; const canAntidote = !player.hasUsedAntidote;
-                area.innerHTML = `<div class="action-title">🧙‍♀️ 女巫行动</div><div class="action-sub">毒药: ${totalPoison} | 解药: ${canAntidote ? 1 : 0}</div><div class="action-panel"><div class="action-row"><span class="action-label">☠️ 毒</span><button class="toggle-btn witch-btn" id="btn-poison" onclick="toggleAction('poison')" ${!canPoison ? 'disabled' : ''}>${canPoison ? '不使用' : '无毒药'}</button><div class="target-grid" id="targets-poison" style="display:none;"></div></div><div class="action-row"><span class="action-label">💊 解药</span><button class="toggle-btn witch-btn" id="btn-antidote" onclick="toggleAction('antidote')" ${!canAntidote ? 'disabled' : ''}>${canAntidote ? '不使用' : '已使用'}</button><div class="target-grid" id="targets-antidote" style="display:none;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                area.innerHTML = `<div class="action-title">🧙‍♀️ 女巫行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(168,85,247,0.1);border:1px solid var(--witch);border-radius:8px;font-size:13px;color:var(--witch);">💡 毒药：${totalPoison} 瓶 | 解药：${canAntidote ? 1 : 0} 瓶</div><div class="action-panel"><div class="action-row"><span class="action-label">☠️ 毒</span><button class="toggle-btn witch-btn" id="btn-poison" onclick="toggleAction('poison')" ${!canPoison ? 'disabled' : ''}>${canPoison ? '不使用' : '无毒药'}</button><div class="target-grid" id="targets-poison" style="display:none;"></div></div><div class="action-row"><span class="action-label">💊 解药</span><button class="toggle-btn witch-btn" id="btn-antidote" onclick="toggleAction('antidote')" ${!canAntidote ? 'disabled' : ''}>${canAntidote ? '不使用' : '已使用'}</button><div class="target-grid" id="targets-antidote" style="display:none;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
                 renderTargets('targets-poison', 'poison'); renderTargets('targets-antidote', 'antidote');
             } else if (player.identity === 'knight') {
                 const doubleBetStatus = player.usedDoubleBet ? '已使用' : '未使用';
@@ -1269,7 +1270,7 @@
                 area.innerHTML = `<div class="action-title">🎩 魔术师行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(236,72,153,0.1);border:1px solid var(--magician);border-radius:8px;font-size:13px;color:var(--magician);">💡 反弹护盾（全局一次）：${bounceStatus} | ${swapStatus}</div><div class="action-panel"><div class="action-row"><span class="action-label">🛡️ 反弹</span><button class="toggle-btn magician-btn" id="btn-bounce" onclick="toggleAction('bounce')" ${player.hasUsedBounce ? 'disabled' : ''}>${player.hasUsedBounce ? '已使用' : '不使用'}</button><div class="target-grid" id="targets-bounce" style="display:none;"></div></div><div class="action-row"><span class="action-label">🔪 刀</span><button class="toggle-btn magician-btn" id="btn-magicianKnife" onclick="toggleAction('magicianKnife')">不使用</button><div class="target-grid" id="targets-magicianKnife" style="display:none;"></div></div><div class="action-row"><span class="action-label">🔄 交换</span><button class="toggle-btn magician-btn" id="btn-swap" onclick="toggleAction('swap')" ${player.swapCharges <= 0 ? 'disabled' : ''}>${player.swapCharges <= 0 ? '次数已用完' : '不使用'}</button><div class="target-grid" id="targets-swap" style="display:none;"></div><div id="swap-status" style="color:var(--text-dim);font-size:13px;margin-top:8px;width:100%;text-align:center;"></div></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
                 renderTargets('targets-bounce', 'bounce'); renderTargets('targets-magicianKnife', 'magicianKnife'); renderTargets('targets-swap', 'swap');
             } else if (player.identity === 'puppeteer') {
-                area.innerHTML = `<div class="action-title">🎭 傀儡师行动</div><div style="margin:8px 0;padding:8px 16px;background:rgba(20,184,166,0.1);border:1px solid var(--puppeteer);border-radius:8px;font-size:13px;color:var(--puppeteer);">💡 傀儡：使目标今晚的刀/盾/毒/赌/交换无效（不影响其反弹与解药）；傀儡后可再使用向上/向下号令</div><div class="action-panel"><div class="action-row"><span class="action-label">🎭 傀儡</span><button class="toggle-btn puppeteer-btn" id="btn-puppet" onclick="toggleAction('puppet')">不使用</button><div class="target-grid" id="targets-puppet" style="display:none;"></div></div><div id="puppet-derived" style="width:100%;"></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
+                area.innerHTML = `<div class="action-title">🎭 傀儡师行动</div><div class="action-panel"><div class="action-row"><span class="action-label">🎭 傀儡</span><button class="toggle-btn puppeteer-btn" id="btn-puppet" onclick="toggleAction('puppet')">不使用</button><div class="target-grid" id="targets-puppet" style="display:none;"></div></div><div id="puppet-derived" style="width:100%;"></div><button class="btn" style="max-width:200px;margin-top:20px;" onclick="confirmNightAction()">确认行动</button></div>`;
                 renderPuppetTargets(player);
                 renderPuppetDerived(player);
             }
@@ -1285,27 +1286,16 @@
                 container.appendChild(btn);
             });
         }
-        // 选定傀儡后，根据傀儡身份渲染向上/向下号令区
+        // 选定傀儡后渲染向上/向下号令区（傀儡师无法得知傀儡身份，界面不透露任何身份相关信息；
+        // 目标不做身份过滤，无效组合由结算层按规则判为无效）
         function renderPuppetDerived(player) {
             const box = $('puppet-derived'); if (!box) return;
             const targetId = Game.tempOperation.puppet;
-            if (!targetId) { box.innerHTML = `<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:8px 0;">选择傀儡目标后，将按傀儡的身份开放向上/向下号令</div>`; return; }
-            const target = Game.players.find(p => p.id === targetId);
-            const effects = PUPPET_EFFECTS[target && target.identity] || { up: '无效', down: '无效' };
-            if (!target || !target.identity || target.identity === 'puppeteer') {
-                box.innerHTML = `<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:8px 0;">该傀儡的向上/向下号令均无效</div>`;
-                return;
-            }
-            box.innerHTML = `<div class="action-row"><span class="action-label">⬆️ 向上</span><button class="toggle-btn puppeteer-btn" id="btn-puppetUp" onclick="toggleAction('puppetUp')">不使用</button><span style="font-size:13px;color:var(--puppeteer);">＝${effects.up}</span><div class="target-grid" id="targets-puppetUp" style="display:none;"></div></div><div class="action-row"><span class="action-label">⬇️ 向下</span><button class="toggle-btn puppeteer-btn" id="btn-puppetDown" onclick="toggleAction('puppetDown')">不使用</button><span style="font-size:13px;color:var(--puppeteer);">＝${effects.down}</span><div class="target-grid" id="targets-puppetDown" style="display:none;"></div></div>`;
-            // 骑士傀儡：向上（赌活）不可对自己，向下（赌死）只可对自己
-            let upCandidates = Game.players.filter(p => p.alive);
-            let downCandidates = Game.players.filter(p => p.alive);
-            if (target.identity === 'knight') {
-                upCandidates = upCandidates.filter(p => p.id !== player.id);
-                downCandidates = downCandidates.filter(p => p.id === player.id);
-            }
-            renderPuppetGrid('targets-puppetUp', 'puppetUp', upCandidates);
-            renderPuppetGrid('targets-puppetDown', 'puppetDown', downCandidates);
+            if (!targetId) { box.innerHTML = ''; return; }
+            box.innerHTML = `<div class="action-row"><span class="action-label">⬆️ 向上</span><button class="toggle-btn puppeteer-btn" id="btn-puppetUp" onclick="toggleAction('puppetUp')">不使用</button><div class="target-grid" id="targets-puppetUp" style="display:none;"></div></div><div class="action-row"><span class="action-label">⬇️ 向下</span><button class="toggle-btn puppeteer-btn" id="btn-puppetDown" onclick="toggleAction('puppetDown')">不使用</button><div class="target-grid" id="targets-puppetDown" style="display:none;"></div></div>`;
+            const candidates = Game.players.filter(p => p.alive);
+            renderPuppetGrid('targets-puppetUp', 'puppetUp', candidates);
+            renderPuppetGrid('targets-puppetDown', 'puppetDown', candidates);
         }
         function renderPuppetGrid(containerId, type, candidates) {
             const container = $(containerId); if (!container) return; container.innerHTML = '';
@@ -1573,20 +1563,12 @@
                     player.hasUsedBounce = true;
                 }
             } else if (player.identity === 'puppeteer') {
-                // 傀儡师：随机选择傀儡；随后依据傀儡身份发动号令（傀儡师可合法获知傀儡身份）
+                // 傀儡师：随机选择傀儡；号令为盲选（傀儡师无法得知傀儡身份，AI 同样受此信息限制）
                 const puppet = pickRandom(aliveOthers);
                 if (puppet) {
                     op.puppet = puppet.id;
-                    if (puppet.identity === 'wolf' || puppet.identity === 'magician') {
-                        const t = pickRandom(aliveOthers); if (t) op.puppetDown = t.id; // 向下＝刀
-                        if (Math.random() < 0.6) op.puppetUp = player.id; // 向上＝盾/反弹，自保
-                    } else if (puppet.identity === 'witch') {
-                        if (Math.random() < 0.7) { const t = pickRandom(aliveOthers); if (t) op.puppetDown = t.id; } // 向下＝毒
-                        if (Math.random() < 0.4) op.puppetUp = player.id; // 向上＝解药，自保
-                    } else if (puppet.identity === 'knight') {
-                        if (aliveOthers.length > 0 && Math.random() < 0.5) op.puppetUp = pickRandom(aliveOthers).id; // 向上＝赌活
-                        if (player.selfDeathWrongCount === 0 && Math.random() < 0.25) op.puppetDown = player.id; // 向下＝赌死（只可对自己）
-                    }
+                    if (Math.random() < 0.5) { const t = pickRandom(aliveAll); if (t) op.puppetUp = t.id; }
+                    if (Math.random() < 0.5) { const t = pickRandom(aliveAll); if (t) op.puppetDown = t.id; }
                 }
             }
 
