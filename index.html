@@ -367,6 +367,8 @@
             socket.on('room_created', ({ code, room }) => {
                 Game.roomCode = code;
                 Game.isHost = true;
+                Game.selectedCount = room.maxPlayers;
+                Game.myId = 'p0';
                 mySocketId = socket.id;
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
@@ -374,7 +376,9 @@
             });
 
             socket.on('room_joined', ({ code, room, you }) => {
+                Game.roomCode = code;
                 Game.isHost = false;
+                Game.selectedCount = room.maxPlayers;
                 mySocketId = you;
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
@@ -391,8 +395,10 @@
             });
 
             socket.on('match_found', ({ code, room, you }) => {
+                if (Game.waitingTimer) { clearInterval(Game.waitingTimer); Game.waitingTimer = null; }
                 Game.roomCode = code;
                 Game.isHost = (you === room.host);
+                Game.selectedCount = room.maxPlayers;
                 mySocketId = you;
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
@@ -408,13 +414,19 @@
             });
 
             socket.on('game_started', ({ players, roomCode, yourId }) => {
+                if (Game.waitingTimer) { clearInterval(Game.waitingTimer); Game.waitingTimer = null; }
                 if (Game._matchStartTimeout) {
                     clearTimeout(Game._matchStartTimeout);
                     Game._matchStartTimeout = null;
                 }
-                // 直接使用服务器发送的顺序（服务器已经打乱）
-                Game.players = players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
-                // 设置 myId（服务器告诉我们是谁）
+                Game.roomCode = roomCode;
+                Game.selectedCount = players.length;
+                // 建立 socketId → 游戏内编号 的映射（用于断线接管）
+                socketIdToGameId = {};
+                players.forEach(p => { if (p.socketId) socketIdToGameId[p.socketId] = p.id; });
+                // 严格使用服务器下发的顺序与编号，绝不本地重新打乱（否则各端顺序不一致）
+                Game.players = players.map(p => createPlayer(p.id, p.name, p.isAI));
+                // 服务器逐个告知"你是几号"
                 if (yourId) {
                     Game.myId = yourId;
                 }
@@ -426,9 +438,10 @@
 
             socket.on('player_action', ({ from, action, data }) => {
                 const { actionType, playerId, data: actionData } = data;
-                // 同步 currentPlayerIdx（在线模式下唯一推进途径）
-                if (actionData && actionData.currentPlayerIdx !== undefined) {
-                    Game.currentPlayerIdx = actionData.currentPlayerIdx;
+                // 同步 currentPlayerIdx（在线模式下唯一推进途径，兼容旧的 nextIdx 字段）
+                const syncIdx = actionData ? (actionData.currentPlayerIdx !== undefined ? actionData.currentPlayerIdx : actionData.nextIdx) : undefined;
+                if (syncIdx !== undefined) {
+                    Game.currentPlayerIdx = syncIdx;
                 }
                 if (actionType === 'select_identity') {
                     const player = Game.players.find(p => p.id === playerId);
@@ -469,20 +482,34 @@
                         }
                         Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
                         addGodMsg(`${player.name} 操作完毕`);
-                        nextTurn();
+                        if (Game.phase === 'playing' && !Game.gameEnded && !Game.isDay) nextTurn();
                     }
                 }
             });
 
-            socket.on('day_result', ({ deaths, round, message }) => {
+            socket.on('day_result', ({ deaths, round, message, players }) => {
+                if (Game.isDay && Game._lastDayRound === round) return; // 同一轮的白天结果只处理一次
+                Game._lastDayRound = round;
+                clearCountdown();
                 Game.isDay = true;
                 Game.round = round;
-                const results = resolveNight(Game.operations, Game.players);
                 const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
-                Game.players.forEach(p => {
-                    const survived = results[p.id];
-                    if (p.alive && !survived) p.alive = false;
-                });
+                if (players) {
+                    // 优先使用房主广播的权威存活状态，避免各端各自结算导致不一致
+                    players.forEach(sp => {
+                        const player = Game.players.find(p => p.id === sp.id);
+                        if (player) {
+                            player.alive = sp.alive;
+                            if (sp.identity && !player.identity) player.identity = sp.identity;
+                        }
+                    });
+                } else {
+                    const results = resolveNight(Game.operations, Game.players);
+                    Game.players.forEach(p => {
+                        const survived = results[p.id];
+                        if (p.alive && !survived) p.alive = false;
+                    });
+                }
                 Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
                 Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
                 updateGameUI();
@@ -492,16 +519,26 @@
             socket.on('game_state_update', (state) => {
                 if (Game.isHost) return;
                 if (state.type === 'night_start') {
+                    clearCountdown();
                     Game.round = state.round;
                     Game.isDay = state.isDay;
                     Game.currentPlayerIdx = state.currentPlayerIdx;
                     Game.operations = state.operations || {};
+                    Game.newlyDeadThisRound = [];
                     if (state.players) {
+                        // 全量同步玩家状态（含毒药/交换次数/特殊能力标记），避免信息不同步
                         state.players.forEach(sp => {
                             const player = Game.players.find(p => p.id === sp.id);
                             if (player) {
                                 player.alive = sp.alive;
                                 player.identity = sp.identity;
+                                if (sp.potions) player.potions = { ...sp.potions };
+                                if (sp.extraPoison !== undefined) player.extraPoison = sp.extraPoison;
+                                if (sp.swapCharges !== undefined) player.swapCharges = sp.swapCharges;
+                                if (sp.usedDoubleKnife !== undefined) player.usedDoubleKnife = sp.usedDoubleKnife;
+                                if (sp.usedDoubleBet !== undefined) player.usedDoubleBet = sp.usedDoubleBet;
+                                if (sp.hasUsedBounce !== undefined) player.hasUsedBounce = sp.hasUsedBounce;
+                                if (sp.hasUsedAntidote !== undefined) player.hasUsedAntidote = sp.hasUsedAntidote;
                             }
                         });
                     }
@@ -533,9 +570,13 @@
             socket.on('host_changed', ({ newHost }) => {
                 if (newHost === socket.id) {
                     Game.isHost = true;
+                    addGodMsg('房主已转移，由你接管游戏进程');
                     if ($('screen-waiting').classList.contains('active')) {
                         $('btn-start-now').style.display = 'block';
                         $('waiting-title').textContent = '等待玩家加入';
+                    } else if (Game.phase === 'playing' && !Game.gameEnded && !Game.isDay) {
+                        // 对局中接任房主：继续驱动游戏循环（AI行动、夜晚结算等）；白天不重复结算
+                        setTimeout(() => nextTurn(), 500);
                     }
                 }
             });
@@ -614,7 +655,10 @@
             localStorage.removeItem('dormkill_name'); $('username').value = '';
             showScreen('screen-login');
         }
-        function backToMenu() { resetGame(); showScreen('screen-menu'); }
+        function backToMenu() {
+            if (socket && isOnlineMode() && Game.roomCode) socket.emit('leave_room');
+            resetGame(); showScreen('screen-menu');
+        }
         function selectMode(mode) {
             Game.mode = mode; Game.isLocalMultiplayer = (mode === 'local');
             const modeSuffix = Game.wolfKnifeMode ? '（狼刀博弈）' : '';
@@ -712,51 +756,51 @@
             if (type === 'room') {
                 $('waiting-title').textContent = Game.isHost ? '等待玩家加入' : '等待房主开始';
                 $('waiting-sub').textContent = `当前 ${Game.players.length}/${Game.selectedCount} 人${Game.roomCode ? '，房间号: ' + Game.roomCode : ''}`;
-                $('waiting-room-code').style.display = Game.roomCode ? 'block' : 'none'; 
+                $('waiting-room-code').style.display = Game.roomCode ? 'block' : 'none';
                 $('waiting-code').textContent = Game.roomCode || '';
-                $('btn-start-now').style.display = Game.isHost ? 'block' : 'none'; 
+                $('btn-start-now').style.display = Game.isHost ? 'block' : 'none';
+                $('btn-start-now').disabled = false;
                 updateWaitingPlayers();
             } else if (type === 'match') {
                 $('waiting-title').textContent = '正在匹配...';
-                $('waiting-sub').textContent = '寻找其他玩家（超时将补充AI）';
-                $('waiting-room-code').style.display = 'none'; 
+                $('waiting-sub').textContent = '寻找其他玩家（超时将由服务器补充AI）';
+                $('waiting-room-code').style.display = 'none';
                 $('btn-start-now').style.display = 'none';
                 let waitTime = 0;
+                // 仅做计时展示；匹配与AI补位由服务器统一完成，避免各端各自开局导致错位
                 Game.waitingTimer = setInterval(() => {
-                    waitTime++; 
+                    waitTime++;
                     $('waiting-sub').textContent = `寻找其他玩家... ${waitTime}秒（超时AI补位）`;
-                    if (waitTime >= 5) { clearInterval(Game.waitingTimer); fillAIAndStart(); }
                 }, 1000);
             }
         }
         function updateWaitingPlayers() {
             const div = $('waiting-players');
             div.innerHTML = `<p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">当前玩家 (${Game.players.length}/${Game.selectedCount})</p>`;
-            Game.players.forEach(p => div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : '(你)'}</div>`);
+            Game.players.forEach(p => div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;">${p.name} ${p.isAI ? '(AI)' : (p.id === Game.myId ? '(你)' : '')}</div>`);
             for (let i = Game.players.length; i < Game.selectedCount; i++) div.innerHTML += `<div style="padding:8px;background:var(--bg);border-radius:8px;margin:4px 0;opacity:0.5;">等待加入...</div>`;
             $('waiting-sub').textContent = `当前 ${Game.players.length}/${Game.selectedCount} 人，等待好友加入...`;
         }
         function enterRoom(code) {
             // 已废弃，使用 socket.emit('join_room') 替代
         }
-        function cancelWaiting() { 
-            if (Game.waitingTimer) clearInterval(Game.waitingTimer); 
+        function cancelWaiting() {
+            if (Game.waitingTimer) clearInterval(Game.waitingTimer);
             if (socket && Game.mode === 'match') socket.emit('cancel_matchmaking');
-            resetGame(); 
-            showScreen('screen-menu'); 
+            if (socket && Game.mode === 'room' && Game.roomCode) socket.emit('leave_room');
+            resetGame();
+            showScreen('screen-menu');
         }
         function fillAIAndStart() {
             while (Game.players.length < Game.selectedCount) Game.players.push(createPlayer('p' + Game.players.length, 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length], true));
             if (Game.waitingTimer) clearInterval(Game.waitingTimer); startGame();
         }
         function startNow() {
-            if ((Game.mode === 'room' || Game.mode === 'match') && Game.isHost && socket) {
-                while (Game.players.length < Game.selectedCount) {
-                    const aiName = 'AI-' + NAMES[(Game.players.length - 1) % NAMES.length];
-                    Game.players.push(createPlayer('p' + Game.players.length, aiName, true));
-                }
-                updateWaitingPlayers();
-                setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 500);
+            if ((Game.mode === 'room' || Game.mode === 'match') && Game.isHost && socket && Game.roomCode) {
+                // AI补位由服务器统一完成并随 game_started 下发，避免主机本地名单与服务器不一致
+                $('btn-start-now').disabled = true;
+                $('waiting-sub').textContent = '正在开始游戏（AI补位）...';
+                socket.emit('start_game', { code: Game.roomCode });
             } else {
                 const needAI = Game.selectedCount - Game.players.length;
                 if (needAI > 0) { $('waiting-sub').textContent = `正在补充 ${needAI} 个AI玩家...`; setTimeout(() => fillAIAndStart(), 800); }
@@ -780,21 +824,22 @@
             Game.isLocalMultiplayer = false; Game.localPlayerNames = []; Game.newlyDeadThisRound = [];
             Game.fastMode = false; clearCountdown(); if (Game.waitingTimer) clearInterval(Game.waitingTimer);
             Game.isConfirming = false;
+            Game.roomCode = null; Game.isHost = false; Game.myId = null;
+            roomPlayersRaw = []; socketIdToGameId = {};
             document.getElementById('mode-toggle').style.display = 'block';
         }
         function startGame() {
             document.getElementById('mode-toggle').style.display = 'none';
-            showScreen('screen-game'); Game.phase = 'playing'; shufflePlayers();
+            showScreen('screen-game'); Game.phase = 'playing';
+            // 在线模式严格使用服务器下发的顺序；仅本地/人机模式才在客户端洗牌
+            if (!isOnlineMode()) shufflePlayers();
             Game.round = 0; Game.isDay = false; Game.currentPlayerIdx = 0; Game.operations = {};
             Game.history = []; Game.godMessages = []; Game.gameEnded = false; Game.newlyDeadThisRound = [];
-            Game.fastMode = false; Game.isConfirming = false;
+            Game.fastMode = false; Game.isConfirming = false; Game._lastDayRound = -1;
             addGodMsg('👁️ 游戏开始！上帝已就位。'); addGodMsg('🌙 进入第零天 夜晚');
             updateGameUI();
-            if (Game.isHost || !isOnlineMode()) {
-                nextTurn();
-            } else {
-                showWaitingAction('等待房主开始游戏...');
-            }
+            // 所有端统一推进到当前回合玩家的界面（非房主的 nextTurn 只渲染、不驱动AI，是安全的）
+            nextTurn();
         }
         function addGodMsg(msg) { Game.godMessages.push({ text: msg, time: Date.now() }); }
         function getIdentityColor(identity) {
@@ -1223,7 +1268,7 @@
             Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
             addGodMsg(`${player.name} 操作完毕`);
             if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (poisonTargets.length >= 2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (Game.tempOperation.antidote) player.hasUsedAntidote = true; }
-            Game.currentPlayerIdx++;
+            // 注意：currentPlayerIdx 已在上面"统一推进"过一次，此处不得再次推进，否则会跳过下一名玩家
             if (Game.isLocalMultiplayer) { setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 400); return; }
             setTimeout(() => { Game.isConfirming = false; nextTurn(); }, 300);
         }
@@ -1378,7 +1423,8 @@
                     playerId: player.id,
                     data: {
                         operation: op,
-                        nextIdx: Game.currentPlayerIdx + 1
+                        identity: player.identity,
+                        currentPlayerIdx: Game.currentPlayerIdx + 1
                     }
                 });
             }
@@ -1395,6 +1441,12 @@
         }
 
         function endNight() {
+            // 在线模式下夜晚结算只由房主执行并广播 day_result，非房主等待权威结果，避免双重结算
+            if (isOnlineMode() && !Game.isHost) {
+                clearCountdown();
+                showWaitingAction('夜晚结束，等待房主结算...');
+                return;
+            }
             Game.isDay = true; addGodMsg('☀️ 进入白天');
             const results = resolveNight(Game.operations, Game.players);
             const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
@@ -1406,7 +1458,9 @@
                     roomCode: Game.roomCode,
                     deaths: Game.newlyDeadThisRound,
                     round: Game.round,
-                    message: '天亮了'
+                    message: '天亮了',
+                    // 附带权威存活状态，其他端直接采用，不再各自重复结算
+                    players: Game.players.map(p => ({ id: p.id, alive: p.alive, identity: p.identity }))
                 });
             }
             updateGameUI();
@@ -1425,6 +1479,18 @@
         }
         function enterNextNight() {
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            // 在线模式下只有房主能推进到下一夜；非房主仅做终局判定，否则等待房主广播
+            if (isOnlineMode() && !Game.isHost) {
+                const aliveCheck = Game.players.filter(p => p.alive);
+                if (aliveCheck.length <= 1) {
+                    if (aliveCheck.length === 0 && Game.newlyDeadThisRound.length > 0) endGameWithSpecialRules(Game.newlyDeadThisRound);
+                    else if (aliveCheck.length === 1) endGame(aliveCheck[0]);
+                    else endGame(null);
+                    return;
+                }
+                showWaitingAction('等待房主进入下一夜...');
+                return;
+            }
             Game.currentPlayerIdx = 0; // 重置为第一个玩家
             const alivePlayers = Game.players.filter(p => p.alive);
             if (alivePlayers.length <= 1) {
@@ -1447,7 +1513,14 @@
                         isDay: false,
                         currentPlayerIdx: 0,
                         operations: {},
-                        players: Game.players.map(p => ({ id: p.id, alive: p.alive, identity: p.identity }))
+                        // 全量状态，含毒药/交换次数/特殊能力标记，确保各端信息一致
+                        players: Game.players.map(p => ({
+                            id: p.id, alive: p.alive, identity: p.identity,
+                            potions: { ...p.potions }, extraPoison: p.extraPoison,
+                            swapCharges: p.swapCharges, usedDoubleKnife: p.usedDoubleKnife,
+                            usedDoubleBet: p.usedDoubleBet, hasUsedBounce: p.hasUsedBounce,
+                            hasUsedAntidote: p.hasUsedAntidote
+                        }))
                     }
                 });
             }
