@@ -168,7 +168,7 @@
     <div id="online-count" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 18px;font-size:13px;color:var(--text-dim);z-index:999;display:none;align-items:center;gap:6px;white-space:nowrap;">🌐 当前在线 <span id="online-count-num" style="color:var(--god);font-weight:700;">-</span> 人</div>
     <div id="screen-login" class="screen active">
         <div class="login-box">
-            <h1>宿舍杀</h1><p>2-4人 · 策略生存</p>
+            <h1>宿舍杀</h1><p>3-5人 · 策略生存</p>
             <input type="text" id="username" class="input-field" placeholder="输入你的名字" maxlength="12" autocapitalize="off" autocomplete="off" autocorrect="off">
             <button class="btn" onclick="doLogin()">进入游戏</button>
         </div>
@@ -191,9 +191,9 @@
             <h2 id="setup-title">房间对战</h2>
             <p id="setup-subtitle" style="color:var(--text-dim);margin:12px 0 24px;">输入房间号，创建或加入房间</p>
             <div class="player-count" id="player-count">
-                <div class="count-option" data-count="2" onclick="selectCount(2)">2</div>
                 <div class="count-option" data-count="3" onclick="selectCount(3)">3</div>
                 <div class="count-option selected" data-count="4" onclick="selectCount(4)">4</div>
+                <div class="count-option" data-count="5" onclick="selectCount(5)">5</div>
             </div>
             <div id="room-code-section" style="margin:16px 0;">
                 <p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">房间号</p>
@@ -271,7 +271,7 @@
 宿舍杀 · 完整规则
 
 一、基本设定
-  游戏人数为 2 至 4 人，由 AI 担任上帝主持。
+  游戏人数为 3 至 5 人，由 AI 担任上帝主持。
   游戏流程：
     第零晚：所有玩家按顺序各自选择身份，随后进行当晚操作。
     之后白天与夜晚交替进行：白天公布存活情况，夜晚按顺序各自操作。
@@ -302,8 +302,8 @@
       傀儡为魔术师：向上＝反弹护盾，向下＝刀。
       傀儡为傀儡师：向上、向下均无效。
     傀儡师无法得知傀儡的身份，号令效果在结算时按傀儡的身份确定。
-    多名傀儡师的傀儡操作相互冲突时，按行动顺序先生效者为准，依次推得最终结果。
-    转变：当场上仅剩两名存活玩家，或存活玩家全部为傀儡师时，傀儡师的技能转变为狼人的技能（刀、盾、双刀，身份仍为傀儡师）。
+    多名傀儡师的傀儡操作相互冲突时，由最后行动的傀儡师的操作先生效，再按行动顺序从后向前依次推得最终结果。
+    转变：当场上仅剩两名存活玩家，或存活玩家全部为傀儡师时，傀儡师的技能转变为狼人的技能（刀、盾、双刀，身份仍为傀儡师）。转变判定仅在白天进行。
 
 三、结算步骤
   每晚按以下步骤依次结算：
@@ -524,7 +524,7 @@
                             if (op.doubleKnife) actionDesc.push(`刀 → ${getPlayerName(op.doubleKnife)}（双刀）`);
                             if (op.shield) actionDesc.push(`盾 → ${getPlayerName(op.shield)}`);
                         }
-                        Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
+                        Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, transformed: player.identity === 'puppeteer' && isPuppeteerTransformed(player), actions: actionDesc, details: { ...op } });
                         addGodMsg(`${player.name} 操作完毕`);
                         if (Game.phase === 'playing' && !Game.gameEnded && !Game.isDay) nextTurn();
                     }
@@ -554,8 +554,9 @@
                         if (p.alive && !survived) p.alive = false;
                     });
                 }
-                Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ name: p.name, alive: p.alive, identity: p.identity }));
+                Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ id: p.id, name: p.name, alive: p.alive, identity: p.identity }));
                 Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
+                updatePuppeteerTransform(); // 转变判定仅在白天进行
                 updateGameUI();
                 showDayActionArea();
             });
@@ -583,6 +584,7 @@
                                 if (sp.usedDoubleBet !== undefined) player.usedDoubleBet = sp.usedDoubleBet;
                                 if (sp.hasUsedBounce !== undefined) player.hasUsedBounce = sp.hasUsedBounce;
                                 if (sp.hasUsedAntidote !== undefined) player.hasUsedAntidote = sp.hasUsedAntidote;
+                                if (sp.puppeteerWolf !== undefined) player.puppeteerWolf = sp.puppeteerWolf;
                             }
                         });
                     }
@@ -802,7 +804,8 @@
         function createPlayer(id, name, isAI) {
             return { id, name, identity: null, alive: true, isAI, potions: { poison: 0, antidote: 0 },
                 hasUsedAntidote: false, extraPoison: 0, usedDoubleKnife: false, usedDoubleBet: false,
-                usedDoublePoison: false, selfDeathWrongCount: 0, hasUsedBounce: false, swapCharges: 1 };
+                usedDoublePoison: false, selfDeathWrongCount: 0, hasUsedBounce: false, swapCharges: 1,
+                puppeteerWolf: false };
         }
         function confirmSetup() {
             if (Game.mode === 'local') {
@@ -955,11 +958,18 @@
             if (identity === 'puppeteer') return '🎭';
             return '❓';
         }
-        // 傀儡师转变判定：仅剩两人存活，或存活者全部为傀儡师时，技能转为狼人技能
+        // 傀儡师是否已转变为狼人技能（标志位仅在白天结算时更新）
         function isPuppeteerTransformed(player) {
-            if (!player || player.identity !== 'puppeteer') return false;
+            return !!(player && player.identity === 'puppeteer' && player.puppeteerWolf);
+        }
+        // 转变判定仅在白天进行：仅剩两人存活，或存活者全部为傀儡师
+        function updatePuppeteerTransform() {
             const alive = Game.players.filter(p => p.alive);
-            return alive.length <= 2 || alive.every(p => p.identity === 'puppeteer');
+            Game.players.forEach(p => {
+                if (p.identity === 'puppeteer') {
+                    p.puppeteerWolf = p.alive && (alive.length <= 2 || alive.every(x => x.identity === 'puppeteer'));
+                }
+            });
         }
         // 傀儡号令效果映射（由傀儡身份决定）
         const PUPPET_EFFECTS = {
@@ -979,13 +989,15 @@
             Game.players.forEach((p, idx) => {
                 const isMe = p.id === Game.myId;
                 const isCurrent = idx === Game.currentPlayerIdx && !Game.isDay && p.alive;
-                const identityClass = (isMe || Game.wolfKnifeMode) && p.identity ? p.identity : 'unknown';
+                // 本地多人模式下所有玩家均视为"他人"，不暴露任何关键信息
+                const selfInfo = (isMe && !Game.isLocalMultiplayer) || Game.wolfKnifeMode;
+                const identityClass = selfInfo && p.identity ? p.identity : 'unknown';
                 const identityIcon = getIdentityIcon(p.identity);
                 const isNewlyDead = Game.isDay && Game.newlyDeadThisRound.some(d => (d.id !== undefined ? d.id === p.id : d.name === p.name));
                 const div = document.createElement('div');
                 div.className = `player-item ${!p.alive ? 'dead' : ''} ${isCurrent ? 'current' : ''} ${isNewlyDead ? 'newly-dead' : ''}`;
                 let badges = '';
-                if (isMe || Game.isLocalMultiplayer) {
+                if (selfInfo) {
                     if (p.identity === 'wolf' && p.usedDoubleKnife) badges += '<span class="special-badge badge-double-knife">双刀已用</span>';
                     if (p.identity === 'knight' && p.usedDoubleBet) badges += '<span class="special-badge badge-double-bet">双赌已用</span>';
                     if (p.identity === 'magician' && p.hasUsedBounce) badges += '<span class="special-badge badge-bounce-used">反弹已用</span>';
@@ -993,8 +1005,8 @@
                 }
                 const statusBadge = p.alive ? '<span class="status-badge alive">存活</span>' : '<span class="status-badge dead">死亡</span>';
                 const aiBadge = (p.isAI && isOnlineMode()) ? '<span class="status-badge" style="background:rgba(148,163,184,0.15);color:var(--text-dim);">AI托管</span>' : '';
-                const showIdentity = isMe || Game.wolfKnifeMode || Game.isLocalMultiplayer;
-                div.innerHTML = `<div class="player-avatar ${identityClass}">${isMe ? identityIcon : '👤'}</div><div class="player-info"><div class="player-name">${p.name} ${isMe && !Game.isLocalMultiplayer ? '(你)' : ''}${badges}</div><div class="player-status">${statusBadge}${aiBadge}${showIdentity && p.identity ? ' · ' + IDENTITY_NAMES[p.identity] : ''}</div></div>`;
+                const showIdentity = selfInfo;
+                div.innerHTML = `<div class="player-avatar ${identityClass}">${selfInfo ? identityIcon : '👤'}</div><div class="player-info"><div class="player-name">${p.name} ${isMe && !Game.isLocalMultiplayer ? '(你)' : ''}${badges}</div><div class="player-status">${statusBadge}${aiBadge}${showIdentity && p.identity ? ' · ' + IDENTITY_NAMES[p.identity] : ''}</div></div>`;
                 list.appendChild(div);
             });
             const me = Game.players.find(p => p.id === Game.myId);
@@ -1435,8 +1447,8 @@
                 }
                 if (Game.tempOperation.bounce) player.hasUsedBounce = true;
             }
-            const op = { knife: null, shield: null, doubleKnife: null, poison: null, poison2: null, antidote: null, betAlive: null, betSelfDie: null, useDoubleBet: false, bounce: null, magicianKnife: null, swapPair: null };
-            if (player.identity === 'wolf') { const knifeTargets = Game.tempOperation.knife || []; if (knifeTargets.length >= 1) op.knife = knifeTargets[0]; if (knifeTargets.length >= 2) op.doubleKnife = knifeTargets[1]; op.shield = Game.tempOperation.shield; }
+            const op = { knife: null, shield: null, doubleKnife: null, poison: null, poison2: null, antidote: null, betAlive: null, betSelfDie: null, useDoubleBet: false, bounce: null, magicianKnife: null, swapPair: null, puppet: null, puppetUp: null, puppetDown: null };
+            if (player.identity === 'wolf' || (player.identity === 'puppeteer' && isPuppeteerTransformed(player))) { const knifeTargets = Game.tempOperation.knife || []; if (knifeTargets.length >= 1) op.knife = knifeTargets[0]; if (knifeTargets.length >= 2) op.doubleKnife = knifeTargets[1]; op.shield = Game.tempOperation.shield; }
             else if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) op.poison = poisonTargets[0]; if (poisonTargets.length >= 2) op.poison2 = poisonTargets[1]; op.antidote = Game.tempOperation.antidote; }
             else if (player.identity === 'knight') { op.betAlive = Game.tempOperation.betAlive; op.betSelfDie = Game.tempOperation.betSelfDie; if (op.betAlive && op.betSelfDie) op.useDoubleBet = true; }
             else if (player.identity === 'magician') { op.bounce = Game.tempOperation.bounce; op.magicianKnife = Game.tempOperation.magicianKnife; if (Game.tempOperation.swap && Game.tempOperation.swap.length === 2) op.swapPair = [...Game.tempOperation.swap]; }
@@ -1480,7 +1492,7 @@
                     if (op.puppetDown) actionDesc.push(`向下（${eff.down}） → ${getPlayerName(op.puppetDown)}`);
                 }
             }
-            Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
+            Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, transformed: player.identity === 'puppeteer' && isPuppeteerTransformed(player), actions: actionDesc, details: { ...op } });
             addGodMsg(`${player.name} 操作完毕`);
             if (player.identity === 'witch') { const poisonTargets = Game.tempOperation.poison || []; if (poisonTargets.length >= 1) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (poisonTargets.length >= 2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (Game.tempOperation.antidote) player.hasUsedAntidote = true; }
             // 注意：currentPlayerIdx 已在上面"统一推进"过一次，此处不得再次推进，否则会跳过下一名玩家
@@ -1600,7 +1612,7 @@
                     if (op.puppetDown) actionDesc.push(`向下（${eff.down}） → ${getPlayerName(op.puppetDown)}`);
                 }
             }
-            Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, actions: actionDesc, details: { ...op } });
+            Game.history.push({ round: Game.round, phase: 'night', player: player.name, identity: player.identity, transformed: player.identity === 'puppeteer' && isPuppeteerTransformed(player), actions: actionDesc, details: { ...op } });
             if (player.identity === 'witch') { if (op.poison) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (op.poison2) { if (player.extraPoison > 0) player.extraPoison--; else player.potions.poison--; } if (op.antidote) player.hasUsedAntidote = true; }
             if (player.identity === 'magician' && op.bounce) player.hasUsedBounce = true;
             addGodMsg(`${player.name} 操作完毕`); Game.currentPlayerIdx++;
@@ -1620,6 +1632,7 @@
             Game.players.forEach(p => { const survived = results[p.id]; if (p.alive && !survived) p.alive = false; });
             Game.newlyDeadThisRound = Game.players.filter(p => previouslyAliveIds.has(p.id) && !p.alive).map(p => ({ id: p.id, name: p.name, alive: p.alive, identity: p.identity }));
             Game.history.push({ round: Game.round, phase: 'day', results: Game.players.map(p => ({ name: p.name, alive: p.alive, identity: p.identity })) });
+            updatePuppeteerTransform(); // 转变判定仅在白天进行
             if (Game.isHost && isOnlineMode() && socket && Game.roomCode) {
                 socket.emit('broadcast_day_result', {
                     roomCode: Game.roomCode,
@@ -1704,7 +1717,7 @@
                             potions: { ...p.potions }, extraPoison: p.extraPoison,
                             swapCharges: p.swapCharges, usedDoubleKnife: p.usedDoubleKnife,
                             usedDoubleBet: p.usedDoubleBet, hasUsedBounce: p.hasUsedBounce,
-                            hasUsedAntidote: p.hasUsedAntidote
+                            hasUsedAntidote: p.hasUsedAntidote, puppeteerWolf: !!p.puppeteerWolf
                         }))
                     }
                 });
@@ -1720,7 +1733,7 @@
             const voided = new Set();
             const derived = [];
             const aliveSet = new Set(players.filter(p => p.alive).map(p => p.id));
-            players.forEach(p => { // 按行动顺序处理：傀儡操作冲突时先行动者优先
+            [...players].reverse().forEach(p => { // 傀儡操作冲突时，最后行动的傀儡师先生效，再依次向前推
                 if (onlyIds && !onlyIds.has(p.id)) return;
                 if (p.identity !== 'puppeteer' || !aliveSet.has(p.id) || voided.has(p.id)) return;
                 const op = operations[p.id];
@@ -1991,8 +2004,8 @@
                         const rName = entry.round === 0 ? '第零天' : `第${ROUND_NAMES[entry.round] || entry.round}天`; 
                         logDiv.innerHTML += `<div style="margin-top:16px;padding:8px 0;border-bottom:1px solid var(--border);color:var(--god);font-weight:700;">${rName} 夜晚</div>`; 
                     }
-                    const idColor = entry.identity === 'wolf' ? 'color:var(--wolf)' : (entry.identity === 'witch' ? 'color:var(--witch)' : (entry.identity === 'knight' ? 'color:var(--knight)' : (entry.identity === 'magician' ? 'color:var(--magician)' : 'color:var(--text-dim)')));
-                    const idName = IDENTITY_NAMES[entry.identity] || '未知';
+                    const idColor = entry.identity === 'wolf' ? 'color:var(--wolf)' : (entry.identity === 'witch' ? 'color:var(--witch)' : (entry.identity === 'knight' ? 'color:var(--knight)' : (entry.identity === 'magician' ? 'color:var(--magician)' : (entry.identity === 'puppeteer' ? 'color:var(--puppeteer)' : 'color:var(--text-dim)'))));
+                    const idName = (IDENTITY_NAMES[entry.identity] || '未知') + (entry.transformed ? '（技能已转变为狼人）' : '');
                     logDiv.innerHTML += `<div class="log-entry"><div class="log-phase">${entry.player} <span style="${idColor}">[${idName}]</span></div><div class="log-action">${entry.actions.join(' | ') || '无操作'}</div></div>`;
                 }
             });
@@ -2000,13 +2013,15 @@
         function showDisabledAction(player, reason) {
             $('action-area').style.display = 'none'; const area = $('action-content'); const displayReason = !player.alive ? '已死亡' : reason; const identity = player.identity;
             if (!identity && Game.round === 0 && !Game.wolfKnifeMode) {
-                area.innerHTML = `<div class="action-title" style="opacity:0.4;">选择你的身份</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="identity-select" style="opacity:0.3;pointer-events:none;"><div class="identity-card wolf" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🐺</div><div class="id-name" style="color:#4a4a6a;">狼人</div></div><div class="identity-card witch" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🧙‍♀️</div><div class="id-name" style="color:#4a4a6a;">女巫</div></div><div class="identity-card knight" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">⚔️</div><div class="id-name" style="color:#4a4a6a;">骑士</div></div><div class="identity-card magician" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🎩</div><div class="id-name" style="color:#4a4a6a;">魔术师</div></div></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认选择</button>`;
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">选择你的身份</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="identity-select" style="opacity:0.3;pointer-events:none;"><div class="identity-card wolf" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🐺</div><div class="id-name" style="color:#4a4a6a;">狼人</div></div><div class="identity-card witch" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🧙‍♀️</div><div class="id-name" style="color:#4a4a6a;">女巫</div></div><div class="identity-card knight" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">⚔️</div><div class="id-name" style="color:#4a4a6a;">骑士</div></div><div class="identity-card magician" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🎩</div><div class="id-name" style="color:#4a4a6a;">魔术师</div></div><div class="identity-card puppeteer" style="cursor:not-allowed;border-color:#2d2d44;background:#0f0f1a;"><div class="id-icon" style="opacity:0.4;">🎭</div><div class="id-name" style="color:#4a4a6a;">傀儡师</div></div></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认选择</button>`;
             } else if (identity === 'wolf' || Game.wolfKnifeMode) {
                 area.innerHTML = `<div class="action-title" style="opacity:0.4;">🐺 狼人行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🔪 刀</span><button class="toggle-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🛡️ 盾</span><button class="toggle-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
             } else if (identity === 'witch') {
                 area.innerHTML = `<div class="action-title" style="opacity:0.4;">🧙‍♀️ 女巫行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">☠️ 毒</span><button class="toggle-btn witch-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">💊 解药</span><button class="toggle-btn witch-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
             } else if (identity === 'knight') {
                 area.innerHTML = `<div class="action-title" style="opacity:0.4;">⚔️ 骑士行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🎲 赌活</span><button class="toggle-btn knight-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">💀 赌死</span><button class="toggle-btn knight-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
+            } else if (identity === 'puppeteer') {
+                area.innerHTML = `<div class="action-title" style="opacity:0.4;">🎭 傀儡师行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🎭 傀儡</span><button class="toggle-btn puppeteer-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">⬆️ 向上</span><button class="toggle-btn puppeteer-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">⬇️ 向下</span><button class="toggle-btn puppeteer-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
             } else if (identity === 'magician') {
                 area.innerHTML = `<div class="action-title" style="opacity:0.4;">🎩 魔术师行动</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div><div class="action-panel" style="opacity:0.4;pointer-events:none;"><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🛡️ 反弹</span><button class="toggle-btn magician-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🔪 刀</span><button class="toggle-btn magician-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><div class="action-row"><span class="action-label" style="color:#4a4a6a;">🔄 交换</span><button class="toggle-btn magician-btn" disabled style="cursor:not-allowed;opacity:0.4;background:#0f0f1a;border-color:#1a1a2e;color:#4a4a6a;">不使用</button></div><button class="btn" style="max-width:200px;margin-top:20px;background:#1a1a2e;color:#4a4a6a;cursor:not-allowed;border:1px solid #2d2d44;" disabled>确认行动</button></div>`;
             } else area.innerHTML = `<div class="action-title" style="opacity:0.4;">等待中...</div><div class="action-sub" style="color:var(--dead);">${displayReason}</div>`;
