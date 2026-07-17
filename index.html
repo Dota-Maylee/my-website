@@ -300,8 +300,7 @@
                 <div class="rules-p indent1">刀：对任意一名玩家施加 1 把刀。</div>
                 <div class="rules-p indent1">交换：指定两名玩家，当晚所有指向他们的刀、盾、毒药、解药、反弹改为作用于对方。初始拥有 1 次，每个奇数序号的夜晚开始时增加 1 次。</div>
                 <div class="rules-h2" style="color:var(--puppeteer);">5. 傀儡师</div>
-                <div class="rules-p indent1">傀儡：指定一名玩家成为当晚傀儡。傀儡当晚的刀、盾、毒、赌、交换全部无效（该无效化作用于输出层，不受交换影响，亦不受反弹影响）；傀儡自身使用的反弹与解药不受影响，照常生效。</div>
-                <div class="rules-p indent1">号令：施加傀儡后，可对任意玩家分别使用“向上”与“向下”（两者可同时进行），效果由傀儡的身份决定，且作用于输入层，与对应身份的正常操作完全一致：</div>
+                <div class="rules-p indent1">傀儡（傀儡师的唯一技能）：指定一名其他玩家成为当晚傀儡。傀儡当晚的刀、盾、毒、赌、交换全部无效（该无效化作用于输出层，不受交换影响，亦不受反弹影响）；傀儡自身使用的反弹与解药不受影响，照常生效。施加傀儡后，可对任意玩家分别使用“向上”与“向下”（两者可同时进行，属于傀儡技能的一部分），效果由傀儡的身份决定，且作用于输入层，与对应身份的正常操作完全一致：</div>
                 <div class="rules-p indent2">傀儡为狼人：向上＝盾，向下＝刀。</div>
                 <div class="rules-p indent2">傀儡为女巫：向上＝解药，向下＝毒。</div>
                 <div class="rules-p indent2">傀儡为骑士：向上＝赌活（不可对自己使用），向下＝赌死（只可对自己使用），猜错惩罚与骑士相同。</div>
@@ -478,6 +477,7 @@
 
             socket.on('player_action', ({ from, action, data }) => {
                 const { actionType, playerId, data: actionData } = data;
+                if (actionType === 'night_action' && Game._actionWaitTimer) { clearTimeout(Game._actionWaitTimer); Game._actionWaitTimer = null; }
                 // 同步 currentPlayerIdx（在线模式下唯一推进途径，兼容旧的 nextIdx 字段）
                 const syncIdx = actionData ? (actionData.currentPlayerIdx !== undefined ? actionData.currentPlayerIdx : actionData.nextIdx) : undefined;
                 if (syncIdx !== undefined) {
@@ -620,6 +620,13 @@
                     roomPlayersRaw = room.players;
                     Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                     updateWaitingPlayers();
+                }
+            });
+
+            // 房主请求重发行动：若请求的是自己且本回合已发送过，则原样重发
+            socket.on('request_action', ({ playerId }) => {
+                if (playerId === Game.myId && Game._lastSentAction && Game._lastSentAction.playerId === playerId && socket && Game.roomCode) {
+                    socket.emit('player_action', { roomCode: Game.roomCode, ...Game._lastSentAction });
                 }
             });
 
@@ -809,8 +816,12 @@
             document.querySelector(`.count-option[data-count="${n}"]`).classList.add('selected');
             if (Game.mode === 'local') renderLocalPlayerInputs();
         }
+        // 名字统一转义，防XSS（所有玩家对象都经此创建）
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
         function createPlayer(id, name, isAI) {
-            return { id, name, identity: null, alive: true, isAI, potions: { poison: 0, antidote: 0 },
+            return { id, name: escapeHtml(name), identity: null, alive: true, isAI, potions: { poison: 0, antidote: 0 },
                 hasUsedAntidote: false, extraPoison: 0, usedDoubleKnife: false, usedDoubleBet: false,
                 usedDoublePoison: false, selfDeathWrongCount: 0, hasUsedBounce: false, swapCharges: 1,
                 puppeteerWolf: false };
@@ -934,6 +945,8 @@
             Game.fastMode = false; clearCountdown(); if (Game.waitingTimer) clearInterval(Game.waitingTimer);
             Game.isConfirming = false;
             Game.roomCode = null; Game.isHost = false; Game.myId = null;
+            Game._lastSentAction = null;
+            if (Game._actionWaitTimer) { clearTimeout(Game._actionWaitTimer); Game._actionWaitTimer = null; }
             roomPlayersRaw = []; socketIdToGameId = {};
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
@@ -948,6 +961,8 @@
             Game.round = 0; Game.isDay = false; Game.currentPlayerIdx = 0; Game.operations = {};
             Game.history = []; Game.godMessages = []; Game.gameEnded = false; Game.newlyDeadThisRound = [];
             Game.fastMode = false; Game.isConfirming = false; Game._lastDayRound = -1;
+            Game._lastSentAction = null;
+            if (Game._actionWaitTimer) { clearTimeout(Game._actionWaitTimer); Game._actionWaitTimer = null; }
             addGodMsg('👁️ 游戏开始！上帝已就位。'); addGodMsg('🌙 进入第零天 夜晚');
             updateGameUI();
             // 所有端统一推进到当前回合玩家的界面（非房主的 nextTurn 只渲染、不驱动AI，是安全的）
@@ -1051,6 +1066,17 @@
                     showPlayerAction(player);
                 } else {
                     showWaitingAction(`等待 ${player.name} 操作...`);
+                    // 房主端：等待远程真人操作时启动兜底计时，超时请求其重发行动
+                    if (Game.isHost && !player.isAI && socket) {
+                        if (Game._actionWaitTimer) { clearTimeout(Game._actionWaitTimer); Game._actionWaitTimer = null; }
+                        Game._actionWaitTimer = setTimeout(() => {
+                            Game._actionWaitTimer = null;
+                            if (Game.phase === 'playing' && !Game.isDay && !Game.gameEnded &&
+                                Game.players[Game.currentPlayerIdx] && Game.players[Game.currentPlayerIdx].id === player.id) {
+                                socket.emit('request_action', { roomCode: Game.roomCode, playerId: player.id });
+                            }
+                        }, 35000);
+                    }
                 }
             } else {
                 showPlayerAction(player);
@@ -1146,11 +1172,10 @@
             if (player.identity === 'witch') { player.potions.poison = 1; player.potions.antidote = 1; }
             addGodMsg(`${player.name} 已准备就绪`); Game.selectedIdentity = null;
             if (isOnlineMode() && socket && Game.roomCode) {
+                Game._lastSentAction = { actionType: 'select_identity', playerId: player.id, data: { identity: player.identity } };
                 socket.emit('player_action', {
                     roomCode: Game.roomCode,
-                    actionType: 'select_identity',
-                    playerId: player.id,
-                    data: { identity: player.identity }
+                    ...Game._lastSentAction
                 });
             }
             setTimeout(() => { 
@@ -1476,14 +1501,10 @@
             Game.operations[player.id] = op;
             Game.currentPlayerIdx++; // 统一推进
             if (isOnlineMode() && socket && Game.roomCode) {
+                Game._lastSentAction = { actionType: 'night_action', playerId: player.id, data: { operation: op, currentPlayerIdx: Game.currentPlayerIdx } };
                 socket.emit('player_action', {
                     roomCode: Game.roomCode,
-                    actionType: 'night_action',
-                    playerId: player.id,
-                    data: {
-                        operation: op,
-                        currentPlayerIdx: Game.currentPlayerIdx
-                    }
+                    ...Game._lastSentAction
                 });
             }
             const actionDesc = [];
@@ -1745,7 +1766,8 @@
             const actors = players.filter(p =>
                 p.identity === 'puppeteer' && aliveSet.has(p.id) &&
                 (!onlyIds || onlyIds.has(p.id)) &&
-                operations[p.id] && operations[p.id].puppet);
+                operations[p.id] && operations[p.id].puppet &&
+                operations[p.id].puppet !== p.id); // 傀儡只能指定其他玩家
             const actorIds = new Set(actors.map(p => p.id));
             // 傀儡链指向：傀儡师 → 傀儡师
             const nextOf = {};
