@@ -22,8 +22,8 @@ const io = new Server(server, {
     origin: ['https://dota-maylee.github.io', 'http://localhost:3000'],
     methods: ['GET', 'POST']
   },
-  pingTimeout: 60000,
-  pingInterval: 25000
+  pingTimeout: 20000,
+  pingInterval: 10000
 });
 
 const rooms = new Map();
@@ -34,7 +34,15 @@ let onlineCount = 0;
 const AI_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
 
 function generateRoomCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  let code;
+  do { code = Math.random().toString(36).substring(2, 8).toUpperCase(); } while (rooms.has(code));
+  return code;
+}
+
+// 名字消毒：去掉HTML特殊字符并限制长度，防XSS
+function cleanName(s) {
+  const n = String(s || '').replace(/[<>&"'`]/g, '').trim().substring(0, 24);
+  return n || '玩家';
 }
 
 function getRoomPublic(room) {
@@ -72,6 +80,8 @@ function startRoomGame(room) {
     [room.players[i], room.players[j]] = [room.players[j], room.players[i]];
   }
   room.players.forEach((p, i) => { p.gameId = 'p' + i; });
+  room.gameOf = {};
+  room.players.forEach(p => { if (p.socketId) room.gameOf[p.socketId] = p.gameId; });
   const publicPlayers = room.players.map(p => ({
     id: p.gameId, name: p.name, isAI: p.isAI, socketId: p.socketId
   }));
@@ -116,7 +126,12 @@ io.on('connection', (socket) => {
   io.emit('online_count', onlineCount);
 
   socket.on('create_room', ({ name, maxPlayers, mode }) => {
+    const now = Date.now();
+    if (socket.lastRoomCreate && now - socket.lastRoomCreate < 3000) { socket.emit('error', { message: '操作太频繁，请稍后再试' }); return; }
+    if (rooms.size > 5000) { socket.emit('error', { message: '服务器繁忙，请稍后再试' }); return; }
+    socket.lastRoomCreate = now;
     removeFromRoom(socket);
+    name = cleanName(name);
     socket.playerName = name;
     const code = generateRoomCode();
     const room = {
@@ -144,6 +159,7 @@ io.on('connection', (socket) => {
     if (room.status !== 'waiting') { socket.emit('error', { message: '游戏已开始' }); return; }
     if (room.players.length >= room.maxPlayers) { socket.emit('error', { message: '房间已满' }); return; }
     removeFromRoom(socket);
+    name = cleanName(name);
     socket.playerName = name;
     room.players.push({ id: socket.id, name, isAI: false, socketId: socket.id });
     socket.join(code);
@@ -164,6 +180,7 @@ io.on('connection', (socket) => {
 
   // 匹配：服务器端统一 5 秒定时器，超时 AI 补位
   socket.on('join_matchmaking', ({ name, maxPlayers, mode }) => {
+    name = cleanName(name);
     socket.playerName = name;
     const key = `${maxPlayers}-${mode}`;
     // 先从这个 socket 可能在的其他队列里移除
@@ -192,6 +209,11 @@ io.on('connection', (socket) => {
         s.roomCode = code;
         s.emit('match_found', { code, room: getRoomPublic(room), you: s.id });
       });
+      // 兜底：若房主客户端未及时开局，服务器3秒后自动开局
+      setTimeout(() => {
+        const r = rooms.get(code);
+        if (r && r.status === 'waiting') startRoomGame(r);
+      }, 3000);
     };
 
     // 超过房间人数时尽可能多地组成满员房间（如 5 人排 2 人房：2+2 开局，余 1 人等待补位）
@@ -233,16 +255,31 @@ io.on('connection', (socket) => {
     socket.matchKey = null;
   });
 
-  // 行动转发（除发送者外的房间内成员）
+  // 行动转发（除发送者外的房间内成员）：校验房间归属与操作者身份，防伪造
   socket.on('player_action', ({ roomCode, actionType, playerId, data }) => {
     if (!roomCode) return;
+    const room = rooms.get(roomCode);
+    if (!room || socket.roomCode !== roomCode || !room.gameOf) return;
+    const myGameId = room.gameOf[socket.id];
+    if (!myGameId) return;
+    const isSelf = playerId === myGameId;
+    const isHostForAI = room.host === socket.id && room.players.some(p => p.gameId === playerId && p.isAI);
+    if (!isSelf && !isHostForAI) return;
     socket.to(roomCode).emit('player_action', { from: socket.id, action: actionType, data: { actionType, playerId, data } });
+  });
+
+  // 房主请求某玩家重发行动（消息丢失兜底）
+  socket.on('request_action', ({ roomCode, playerId }) => {
+    const room = rooms.get(roomCode);
+    if (!room || room.host !== socket.id) return;
+    io.to(roomCode).emit('request_action', { playerId });
   });
 
   // 白天结果广播（含权威存活状态，直接透传整个负载）
   // 注意：用 socket.to 排除发送者——房主已在本地结算并展示，回声会覆盖其"新死亡"数据导致误报平安夜
   socket.on('broadcast_day_result', ({ roomCode, ...rest }) => {
-    if (!roomCode) return;
+    const room = rooms.get(roomCode);
+    if (!room || room.host !== socket.id) return; // 仅房主可广播白天结果
     socket.to(roomCode).emit('day_result', rest);
   });
 
@@ -259,7 +296,8 @@ io.on('connection', (socket) => {
 
   // 夜晚开始等状态同步（透传）
   socket.on('sync_game_state', ({ roomCode, state }) => {
-    if (!roomCode) return;
+    const room = rooms.get(roomCode);
+    if (!room || room.host !== socket.id) return; // 仅房主可同步状态
     socket.to(roomCode).emit('game_state_update', state);
   });
 
