@@ -11,7 +11,7 @@
         :root {
             --bg: #0a0a0f; --bg-day: #151520; --card: #16162a; --card-hover: #1e1e3a;
             --text: #e2e8f0; --text-dim: #94a3b8; --wolf: #e94560; --witch: #a855f7;
-            --knight: #3b82f6; --magician: #ec4899; --god: #fbbf24; --alive: #10b981;
+            --knight: #3b82f6; --magician: #ec4899; --puppeteer: #14b8a6; --god: #fbbf24; --alive: #10b981;
             --dead: #64748b; --border: #2d2d44;
         }
         body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
@@ -72,6 +72,7 @@
         .player-avatar.witch { background: rgba(168, 85, 247, 0.2); color: var(--witch); }
         .player-avatar.knight { background: rgba(59, 130, 246, 0.2); color: var(--knight); }
         .player-avatar.magician { background: rgba(236, 72, 153, 0.2); color: var(--magician); }
+        .player-avatar.puppeteer { background: rgba(20, 184, 166, 0.2); color: var(--puppeteer); }
         .player-avatar.unknown { background: var(--border); color: var(--text-dim); }
         .player-info { flex: 1; min-width: 0; }
         .player-name { font-weight: 600; word-break: break-all; }
@@ -101,6 +102,7 @@
         .toggle-btn.active.witch-btn { border-color: var(--witch); color: var(--witch); background: rgba(168, 85, 247, 0.1); }
         .toggle-btn.active.knight-btn { border-color: var(--knight); color: var(--knight); background: rgba(59, 130, 246, 0.1); }
         .toggle-btn.active.magician-btn { border-color: var(--magician); color: var(--magician); background: rgba(236, 72, 153, 0.1); }
+        .toggle-btn.active.puppeteer-btn { border-color: var(--puppeteer); color: var(--puppeteer); background: rgba(20, 184, 166, 0.1); }
         .target-grid { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
         .target-btn { width: 64px; height: 64px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s; display: flex; align-items: center; justify-content: center; flex-direction: column; -webkit-appearance: none; touch-action: manipulation; }
         .target-btn:hover { border-color: var(--text-dim); transform: scale(1.1); }
@@ -125,6 +127,7 @@
         .modal-content .witch-text { color: var(--witch); }
         .modal-content .knight-text { color: var(--knight); }
         .modal-content .magician-text { color: var(--magician); }
+        .modal-content .puppeteer-text { color: var(--puppeteer); }
         .modal-content .god-text { color: var(--god); }
         .modal-content .step-box { background: var(--bg); border-radius: 12px; padding: 16px 20px; margin: 8px 0 16px 0; border-left: 4px solid var(--god); }
         .modal-content .step-box .step-title { font-weight: 700; color: var(--text); margin-bottom: 4px; }
@@ -942,13 +945,29 @@
         function getIdentityColor(identity) {
             if (identity === 'wolf') return 'var(--wolf)'; if (identity === 'witch') return 'var(--witch)';
             if (identity === 'knight') return 'var(--knight)'; if (identity === 'magician') return 'var(--magician)';
+            if (identity === 'puppeteer') return 'var(--puppeteer)';
             return 'var(--text-dim)';
         }
         function getIdentityIcon(identity) {
             if (identity === 'wolf') return '🐺'; if (identity === 'witch') return '🧙‍♀️';
             if (identity === 'knight') return '⚔️'; if (identity === 'magician') return '🎩';
+            if (identity === 'puppeteer') return '🎭';
             return '❓';
         }
+        // 傀儡师转变判定：仅剩两人存活，或存活者全部为傀儡师时，技能转为狼人技能
+        function isPuppeteerTransformed(player) {
+            if (!player || player.identity !== 'puppeteer') return false;
+            const alive = Game.players.filter(p => p.alive);
+            return alive.length <= 2 || alive.every(p => p.identity === 'puppeteer');
+        }
+        // 傀儡号令效果映射（由傀儡身份决定）
+        const PUPPET_EFFECTS = {
+            wolf: { up: '🛡️ 盾', down: '🔪 刀' },
+            witch: { up: '💊 解药', down: '☠️ 毒' },
+            knight: { up: '🎲 赌活', down: '💀 赌死' },
+            magician: { up: '🌀 反弹', down: '🔪 刀' },
+            puppeteer: { up: '无效', down: '无效' }
+        };
 
         function updateGameUI() {
             let roundDisplayText = Game.isDay ? (ROUND_NAMES[Game.round + 1] || (Game.round + 1)) : (ROUND_NAMES[Game.round] || Game.round);
