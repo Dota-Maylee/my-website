@@ -161,6 +161,7 @@
 <body>
     <div class="mode-toggle" id="mode-toggle" onclick="toggleGameMode()">🐺 普通模式</div>
     <div class="corner-btn" onclick="toggleRules()">?</div>
+    <div id="online-count" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 18px;font-size:13px;color:var(--text-dim);z-index:999;display:none;align-items:center;gap:6px;white-space:nowrap;">🌐 当前在线 <span id="online-count-num" style="color:var(--god);font-weight:700;">-</span> 人</div>
     <div id="screen-login" class="screen active">
         <div class="login-box">
             <h1>宿舍杀</h1><p>2-4人 · 策略生存</p>
@@ -253,7 +254,8 @@
             <p id="winner-desc" style="color:var(--text-dim);font-size:18px;"></p>
             <div class="log-viewer" id="full-log"></div>
             <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;">
-                <button class="btn" style="max-width:200px;" onclick="backToMenu()">返回主菜单</button>
+                <button class="btn" id="btn-back-room" style="max-width:200px;display:none;" onclick="returnToRoom()">返回房间</button>
+                <button class="btn btn-secondary" style="max-width:200px;margin-top:0;" onclick="backToMenu()">返回主菜单</button>
             </div>
         </div>
     </div>
@@ -346,6 +348,9 @@
                 console.log('已连接到服务器');
                 mySocketId = socket.id;
             });
+
+            // 服务器推送的实时在线人数
+            socket.on('online_count', (n) => updateOnlineCount(n));
 
             socket.on('disconnect', () => {
                 console.log('与服务器断开连接');
@@ -567,6 +572,26 @@
                 }
             });
 
+            // 一局结束后房间重置：清空对局状态，但保留房间与玩家，全员回到等待界面
+            socket.on('room_reset', ({ room }) => {
+                Game.phase = 'waiting';
+                roomPlayersRaw = room.players;
+                Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
+                Game.myId = 'p' + room.players.findIndex(p => p.id === socket.id);
+                Game.isHost = (room.host === socket.id);
+                Game.selectedCount = room.maxPlayers;
+                Game.currentPlayerIdx = 0; Game.round = 0; Game.isDay = false;
+                Game.operations = {}; Game.history = []; Game.godMessages = [];
+                Game.gameEnded = false; Game.newlyDeadThisRound = []; Game.fastMode = false;
+                Game.isConfirming = false; Game._lastDayRound = -1;
+                Game.selectedIdentity = null; Game.tempOperation = {};
+                clearCountdown();
+                if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+                if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+                document.getElementById('mode-toggle').style.display = 'block';
+                showWaiting('room');
+            });
+
             socket.on('host_changed', ({ newHost }) => {
                 if (newHost === socket.id) {
                     Game.isHost = true;
@@ -620,7 +645,8 @@
             isHost: false, isLocalMultiplayer: false, localPlayerNames: [],
             localNameCache: {}, newlyDeadThisRound: [], countdownTimer: null,
             countdownSeconds: 60, fastMode: false, wolfKnifeMode: false,
-            isConfirming: false
+            isConfirming: false, _dayAutoTimer: null, _dayAutoCountdown: null,
+            _lastDayRound: -1
         };
         const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo', 'Fox'];
         const IDENTITY_NAMES = { wolf: '狼人', witch: '女巫', knight: '骑士', magician: '魔术师', unknown: '未知' };
@@ -629,7 +655,14 @@
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             $(id).classList.add('active');
+            // 在线人数徽标仅在主菜单顶端显示
+            const oc = $('online-count');
+            if (oc) oc.style.display = (id === 'screen-menu') ? 'flex' : 'none';
             if (id === 'screen-game') updateGameUI();
+        }
+        function updateOnlineCount(n) {
+            const el = $('online-count-num');
+            if (el) el.textContent = n;
         }
         function toggleRules() { $('rules-modal').classList.toggle('active'); }
         function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
@@ -658,6 +691,14 @@
         function backToMenu() {
             if (socket && isOnlineMode() && Game.roomCode) socket.emit('leave_room');
             resetGame(); showScreen('screen-menu');
+        }
+        function returnToRoom() {
+            if (socket && Game.mode === 'room' && Game.roomCode) {
+                socket.emit('return_to_room', { code: Game.roomCode });
+                const btn = $('btn-back-room');
+                if (btn) { btn.disabled = true; btn.textContent = '正在返回...'; }
+                setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = '返回房间'; } }, 2000);
+            }
         }
         function selectMode(mode) {
             Game.mode = mode; Game.isLocalMultiplayer = (mode === 'local');
@@ -766,6 +807,7 @@
                 $('waiting-sub').textContent = '寻找其他玩家（超时将由服务器补充AI）';
                 $('waiting-room-code').style.display = 'none';
                 $('btn-start-now').style.display = 'none';
+                $('waiting-players').innerHTML = ''; // 清空上一局残留的玩家列表
                 let waitTime = 0;
                 // 仅做计时展示；匹配与AI补位由服务器统一完成，避免各端各自开局导致错位
                 Game.waitingTimer = setInterval(() => {
@@ -826,6 +868,9 @@
             Game.isConfirming = false;
             Game.roomCode = null; Game.isHost = false; Game.myId = null;
             roomPlayersRaw = []; socketIdToGameId = {};
+            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+            const wp = $('waiting-players'); if (wp) wp.innerHTML = ''; // 避免下局匹配显示上一局玩家
             document.getElementById('mode-toggle').style.display = 'block';
         }
         function startGame() {
@@ -1447,7 +1492,7 @@
                 showWaitingAction('夜晚结束，等待房主结算...');
                 return;
             }
-            Game.isDay = true; addGodMsg('☀️ 进入白天');
+            Game.isDay = true; Game._lastDayRound = Game.round; addGodMsg('☀️ 进入白天');
             const results = resolveNight(Game.operations, Game.players);
             const previouslyAliveIds = new Set(Game.players.filter(p => p.alive).map(p => p.id));
             Game.players.forEach(p => { const survived = results[p.id]; if (p.alive && !survived) p.alive = false; });
@@ -1475,10 +1520,28 @@
                 Game.newlyDeadThisRound.forEach(dead => { broadcastHtml += `<div class="broadcast-item" style="background:#0a0a0f;border-radius:12px;padding:12px 16px;margin:8px 0;border-left:4px solid #ff2d55;font-size:15px;display:flex;align-items:center;gap:8px;">💀 ${dead.name}</div>`; });
                 broadcastHtml += '</div>';
             } else broadcastHtml = '<div class="broadcast-item no-death" style="margin:16px 0;background:#0a0a0f;border-radius:12px;padding:12px 16px;border-left:4px solid #10b981;color:#10b981;font-size:15px;">🌙 平安夜，无人死亡</div>';
-            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<button class="btn" style="max-width:200px;" onclick="enterNextNight()">继续</button>`;
+            area.innerHTML = `<div style="background:linear-gradient(135deg, #e2e8f0, #f1f5f9);color:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;"><div style="font-size:28px;margin-bottom:4px;">☀️</div><div style="font-size:22px;font-weight:700;">天亮了</div></div>${broadcastHtml}<div id="day-auto-tip" style="margin-top:20px;color:var(--text-dim);font-size:14px;">3 秒后自动进入下一夜…</div>`;
+            // 白天固定展示3秒后自动结束，无需任何人点击确认
+            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+            let sec = 3;
+            Game._dayAutoCountdown = setInterval(() => {
+                sec--;
+                const tip = $('day-auto-tip');
+                if (sec <= 0) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; return; }
+                if (tip) tip.textContent = `${sec} 秒后自动进入下一夜…`;
+            }, 1000);
+            Game._dayAutoTimer = setTimeout(() => {
+                Game._dayAutoTimer = null;
+                if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+                enterNextNight();
+            }, 3000);
         }
         function enterNextNight() {
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+            // 已过期的白天计时/重复调用直接忽略（例如夜晚广播已先于本地计时到达）
+            if (!Game.isDay) return;
             // 在线模式下只有房主能推进到下一夜；非房主仅做终局判定，否则等待房主广播
             if (isOnlineMode() && !Game.isHost) {
                 const aliveCheck = Game.players.filter(p => p.alive);
@@ -1694,6 +1757,9 @@
 
         function endGameWithSpecialRules(newlyDead) {
             Game.gameEnded = true; clearCountdown();
+            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+            $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
             const deadPlayers = newlyDead.map(r => ({ ...r, playerObj: Game.players.find(p => p.name === r.name) })).filter(d => d.playerObj);
             const byIdentity = {}; deadPlayers.forEach(d => { if (!byIdentity[d.identity]) byIdentity[d.identity] = []; byIdentity[d.identity].push(d); });
             let winners = []; const identities = Object.keys(byIdentity);
@@ -1712,7 +1778,11 @@
             renderEndLog();
         }
         function endGame(winner) {
-            Game.gameEnded = true; clearCountdown(); showScreen('screen-end');
+            Game.gameEnded = true; clearCountdown();
+            if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
+            if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
+            $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
+            showScreen('screen-end');
             if (winner) { const isMe = winner.id === Game.myId; $('winner-title').textContent = isMe ? '🎉 你赢了！' : `${winner.name} 获胜！`; $('winner-desc').textContent = ''; }
             else { $('winner-title').textContent = '💀 无人生还'; $('winner-desc').textContent = '所有玩家都已死亡'; }
             renderEndLog();
@@ -1759,6 +1829,8 @@
         window.onload = () => {
             const savedName = localStorage.getItem('dormkill_name'); if (savedName) $('username').value = savedName;
             initSocket();
+            // 进入页面先拉取一次在线人数（之后由 online_count 推送实时更新）
+            fetch(SERVER_URL + '/api/online').then(r => r.json()).then(d => updateOnlineCount(d.count)).catch(() => {});
         };
         window.onbeforeunload = () => { if (Game.phase === 'playing') return '游戏正在进行中，确定要离开吗？'; };
     </script>
