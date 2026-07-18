@@ -444,7 +444,10 @@
                 $('waiting-room-code').style.display = 'none';
                 $('btn-start-now').style.display = 'none';
                 if (Game.isHost && room.playerCount >= room.maxPlayers) {
-                    setTimeout(() => socket.emit('start_game', { code: Game.roomCode }), 800);
+                    Game._matchStartTimeout = setTimeout(() => {
+                        Game._matchStartTimeout = null;
+                        if (Game.roomCode && socket) socket.emit('start_game', { code: Game.roomCode });
+                    }, 800);
                 }
             });
 
@@ -453,6 +456,8 @@
             });
 
             socket.on('game_started', ({ players, roomCode, yourId }) => {
+                // 已取消/退出到菜单或已在游戏中时，忽略迟到的开局消息，防止被拉回游戏卡死
+                if (!Game.roomCode || Game.phase === 'playing') return;
                 if (Game.waitingTimer) { clearInterval(Game.waitingTimer); Game.waitingTimer = null; }
                 if (Game._matchStartTimeout) {
                     clearTimeout(Game._matchStartTimeout);
@@ -906,8 +911,10 @@
         }
         function cancelWaiting() {
             if (Game.waitingTimer) clearInterval(Game.waitingTimer);
+            if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
             if (socket && Game.mode === 'match') socket.emit('cancel_matchmaking');
-            if (socket && Game.mode === 'room' && Game.roomCode) socket.emit('leave_room');
+            // 匹配成功后取消也必须离开服务器房间，否则会被开局消息拉回并卡死
+            if (socket && Game.roomCode) socket.emit('leave_room');
             resetGame();
             showScreen('screen-menu');
         }
@@ -947,6 +954,7 @@
             Game.roomCode = null; Game.isHost = false; Game.myId = null;
             Game._lastSentAction = null;
             if (Game._actionWaitTimer) { clearTimeout(Game._actionWaitTimer); Game._actionWaitTimer = null; }
+            if (Game._matchStartTimeout) { clearTimeout(Game._matchStartTimeout); Game._matchStartTimeout = null; }
             roomPlayersRaw = []; socketIdToGameId = {};
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
