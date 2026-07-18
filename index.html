@@ -409,6 +409,9 @@
                 Game.roomCode = code;
                 Game.isHost = false;
                 Game.selectedCount = room.maxPlayers;
+                // 非房主自动对齐房主的游戏模式（普通/狼刀博弈），避免两端模式不一致
+                Game.wolfKnifeMode = (room.mode === 'wolf');
+                updateModeToggle();
                 mySocketId = you;
                 roomPlayersRaw = room.players;
                 Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
@@ -648,8 +651,19 @@
                 clearCountdown();
                 if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
                 if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
-                document.getElementById('mode-toggle').style.display = 'block';
+                document.getElementById('mode-toggle').style.display = Game.isHost ? 'block' : 'none';
+                // 对齐房间当前模式（可能已被房主在等待期间切换）
+                Game.wolfKnifeMode = (room.mode === 'wolf');
+                updateModeToggle();
                 showWaiting('room');
+            });
+
+            // 房主在等待页切换了游戏模式：非房主跟随
+            socket.on('room_mode_changed', ({ mode }) => {
+                if (Game.isHost) return;
+                Game.wolfKnifeMode = (mode === 'wolf');
+                updateModeToggle();
+                showToast(Game.wolfKnifeMode ? '🐺 房主已切换为狼刀博弈模式' : '🐺 房主已切换为普通模式');
             });
 
             socket.on('host_changed', ({ newHost }) => {
@@ -659,6 +673,7 @@
                     if ($('screen-waiting').classList.contains('active')) {
                         $('btn-start-now').style.display = 'block';
                         $('waiting-title').textContent = '等待玩家加入';
+                        $('mode-toggle').style.display = 'block';
                     } else if (Game.phase === 'playing' && !Game.gameEnded && !Game.isDay) {
                         // 对局中接任房主：继续驱动游戏循环（AI行动、夜晚结算等）；白天不重复结算
                         setTimeout(() => nextTurn(), 500);
@@ -748,8 +763,7 @@
             $('menu-username').textContent = name;
             showScreen('screen-menu');
         }
-        function toggleGameMode() {
-            Game.wolfKnifeMode = !Game.wolfKnifeMode;
+        function updateModeToggle() {
             const btn = $('mode-toggle');
             if (Game.wolfKnifeMode) {
                 btn.textContent = '🐺 狼刀博弈';
@@ -757,6 +771,14 @@
             } else {
                 btn.textContent = '🐺 普通模式';
                 btn.classList.remove('wolf-mode');
+            }
+        }
+        function toggleGameMode() {
+            Game.wolfKnifeMode = !Game.wolfKnifeMode;
+            updateModeToggle();
+            // 房间等待页中房主切换模式：同步给服务器与房间内其他玩家
+            if (Game.mode === 'room' && Game.isHost && socket && Game.roomCode && $('screen-waiting').classList.contains('active')) {
+                socket.emit('set_room_mode', { code: Game.roomCode, mode: Game.wolfKnifeMode ? 'wolf' : 'normal' });
             }
         }
         function backToLogin() {
@@ -881,6 +903,8 @@
                 $('waiting-code').textContent = Game.roomCode || '';
                 $('btn-start-now').style.display = Game.isHost ? 'block' : 'none';
                 $('btn-start-now').disabled = false;
+                // 模式切换按钮仅房主可用，非房主自动跟随房主模式
+                $('mode-toggle').style.display = Game.isHost ? 'block' : 'none';
                 updateWaitingPlayers();
             } else if (type === 'match') {
                 $('waiting-title').textContent = '正在匹配...';
