@@ -79,6 +79,7 @@ function fillRoomWithAI(room) {
 function startRoomGame(room) {
   if (!room || room.status === 'playing') return;
   room.status = 'playing';
+  room.ended = false; // 新对局开始，清除结束标记
   fillRoomWithAI(room);
   // Fisher-Yates 洗牌（只在服务器做一次，所有客户端使用同一顺序）
   for (let i = room.players.length - 1; i > 0; i--) {
@@ -314,12 +315,20 @@ io.on('connection', (socket) => {
   });
 
   // 一局结束后返回房间：房间重新开放等待，移除AI，全员回到等待界面
+  // 房主宣告本局结束（此后任何成员都可把房间带回等待状态）
+  socket.on('game_ended', (payload) => {
+    const { code } = payload || {};
+    const room = rooms.get(code);
+    if (!room || room.host !== socket.id) return; // 仅房主可宣告，防止伪造结束来拆房
+    room.ended = true;
+  });
+
   socket.on('return_to_room', (payload) => {
     const { code } = payload || {};
     const room = rooms.get(code);
     if (!room) return;
-    // 仅房主可把房间带回等待状态，防止对局中被其他成员恶意重置
-    if (room.host !== socket.id) return;
+    // 房主随时可带回；其他成员仅在本局结束后可带回（防止对局中被恶意重置）
+    if (room.host !== socket.id && !room.ended) return;
     room.status = 'waiting';
     room.gameOf = null; // 旧对局的行动通行证作废
     room.delegatedAI = {};
