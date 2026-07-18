@@ -2011,9 +2011,10 @@
 
         function endGameWithSpecialRules(newlyDead) {
             Game.gameEnded = true; clearCountdown();
+            if (Game.isHost && isOnlineMode() && socket && Game.roomCode) socket.emit('game_ended', { code: Game.roomCode });
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
-            $('btn-back-room').style.display = (Game.mode === 'room' && Game.isHost) ? 'block' : 'none';
+            $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
             const deadPlayers = newlyDead.map(r => ({ ...r, playerObj: Game.players.find(p => (r.id !== undefined ? p.id === r.id : p.name === r.name)) })).filter(d => d.playerObj);
             const byIdentity = {}; deadPlayers.forEach(d => { if (!byIdentity[d.identity]) byIdentity[d.identity] = []; byIdentity[d.identity].push(d); });
             const idxOf = (d) => Game.players.findIndex(p => (d.id !== undefined ? p.id === d.id : p.name === d.name));
@@ -2034,9 +2035,10 @@
         }
         function endGame(winner) {
             Game.gameEnded = true; clearCountdown();
+            if (Game.isHost && isOnlineMode() && socket && Game.roomCode) socket.emit('game_ended', { code: Game.roomCode });
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
-            $('btn-back-room').style.display = (Game.mode === 'room' && Game.isHost) ? 'block' : 'none';
+            $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
             showScreen('screen-end');
             if (winner) { const isMe = winner.id === Game.myId; $('winner-title').textContent = isMe ? '🎉 你赢了！' : `${winner.name} 获胜！`; $('winner-desc').textContent = ''; }
             else { $('winner-title').textContent = '💀 无人生还'; $('winner-desc').textContent = '所有玩家都已死亡'; }
