@@ -195,7 +195,7 @@
     <div id="screen-setup" class="screen">
         <div class="login-box" style="max-width:500px;">
             <h2 id="setup-title">房间对战</h2>
-            <p id="setup-subtitle" style="color:var(--text-dim);margin:12px 0 24px;">输入房间号，创建或加入房间</p>
+            <p id="setup-subtitle" style="color:var(--text-dim);margin:12px 0 24px;">直接进入房间以创建房间，输入房间号以加入房间</p>
             <div class="player-count" id="player-count">
                 <div class="count-option" data-count="3" onclick="selectCount(3)">3</div>
                 <div class="count-option selected" data-count="4" onclick="selectCount(4)">4</div>
@@ -204,7 +204,6 @@
             <div id="room-code-section" style="margin:16px 0;">
                 <p style="color:var(--text-dim);font-size:14px;margin-bottom:8px;">房间号</p>
                 <input type="text" id="room-code-input" class="input-field" placeholder="如 ABC123" maxlength="8" style="text-align:center;font-family:monospace;letter-spacing:2px;font-size:18px;" autocapitalize="off" autocomplete="off" autocorrect="off">
-                <p style="color:var(--text-dim);font-size:12px;margin-top:8px;">新房间号创建，已有房间号加入</p>
             </div>
             <div id="local-players-section" style="display:none;margin:16px 0;">
                 <p style="color:var(--text-dim);font-size:14px;margin-bottom:12px;">输入各玩家名字</p>
@@ -387,16 +386,12 @@
             });
 
             socket.on('error', ({ message }) => {
-                if (message === '房间不存在' && Game.mode === 'room') {
-                    const myName = localStorage.getItem('dormkill_name') || '玩家';
-                    socket.emit('create_room', { 
-                        name: myName, 
-                        maxPlayers: Game.selectedCount, 
-                        mode: Game.wolfKnifeMode ? 'wolf' : 'normal' 
-                    });
-                } else {
-                    alert(message);
+                // 加入房间失败（不存在/已满/已开始）：清除暂存的房间号，直接提示，不再自动建房
+                if (Game.mode === 'room' && !$('screen-waiting').classList.contains('active') &&
+                    (message === '房间不存在' || message === '房间已满' || message === '游戏已开始')) {
+                    Game.roomCode = null;
                 }
+                alert(message);
             });
 
             socket.on('room_created', ({ code, room }) => {
@@ -785,7 +780,7 @@
             const modeSuffix = Game.wolfKnifeMode ? '（狼刀博弈）' : '';
             if (mode === 'room') {
                 $('setup-title').textContent = '房间对战' + modeSuffix; $('setup-btn').textContent = '进入房间';
-                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '输入房间号，创建或加入房间';
+                $('setup-subtitle').style.display = 'block'; $('setup-subtitle').textContent = '直接进入房间以创建房间，输入房间号以加入房间';
                 $('room-code-section').style.display = 'block'; $('local-players-section').style.display = 'none';
                 Game.isHost = true;
             } else if (mode === 'ai') {
