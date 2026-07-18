@@ -212,7 +212,8 @@ io.on('connection', (socket) => {
       // 兜底：若房主客户端未及时开局，服务器3秒后自动开局
       setTimeout(() => {
         const r = rooms.get(code);
-        if (r && r.status === 'waiting') startRoomGame(r);
+        // 兜底开局前确认房间里仍有真人，避免全员退出后空房开局
+        if (r && r.status === 'waiting' && r.players.some(p => !p.isAI)) startRoomGame(r);
       }, 3000);
     };
 
