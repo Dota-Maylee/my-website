@@ -621,7 +621,7 @@
                             setTimeout(() => nextTurn(), 1000);
                         }
                     }
-                } else if ($('screen-waiting').classList.contains('active')) {
+                } else if (Game.mode === 'room' && $('screen-waiting').classList.contains('active')) {
                     roomPlayersRaw = room.players;
                     Game.players = room.players.map((p, i) => createPlayer('p' + i, p.name, p.isAI));
                     updateWaitingPlayers();
@@ -647,6 +647,8 @@
                 Game.operations = {}; Game.history = []; Game.godMessages = [];
                 Game.gameEnded = false; Game.newlyDeadThisRound = []; Game.fastMode = false;
                 Game.isConfirming = false; Game._lastDayRound = -1;
+                Game._lastSentAction = null;
+                if (Game._actionWaitTimer) { clearTimeout(Game._actionWaitTimer); Game._actionWaitTimer = null; }
                 Game.selectedIdentity = null; Game.tempOperation = {};
                 clearCountdown();
                 if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
@@ -941,7 +943,7 @@
                 [Game.players[i], Game.players[j]] = [Game.players[j], Game.players[i]];
             }
             Game.players.forEach((p, idx) => p.id = 'p' + idx);
-            if (myPlayer) { const newMe = Game.players.find(p => p.name === myPlayer.name && !p.isAI); if (newMe) Game.myId = newMe.id; }
+            if (myPlayer) Game.myId = myPlayer.id; // 对象引用在洗牌后依然有效，直接取更新后的 id（避免重名误判）
             addGodMsg('🔀 玩家顺序已随机打乱');
         }
         function resetGame() {
@@ -1093,11 +1095,11 @@
         function startCountdown() {
             clearCountdown(); const timerEl = $('countdown-timer');
             timerEl.classList.remove('hidden', 'warning', 'danger');
-            Game.countdownSeconds = 60; timerEl.textContent = Game.countdownSeconds;
+            Game.countdownSeconds = 30; timerEl.textContent = Game.countdownSeconds;
             Game.countdownTimer = setInterval(() => {
                 Game.countdownSeconds--; timerEl.textContent = Game.countdownSeconds;
-                if (Game.countdownSeconds <= 10) { timerEl.classList.add('danger'); timerEl.classList.remove('warning'); }
-                else if (Game.countdownSeconds <= 30) { timerEl.classList.add('warning'); timerEl.classList.remove('danger'); }
+                if (Game.countdownSeconds <= 5) { timerEl.classList.add('danger'); timerEl.classList.remove('warning'); }
+                else if (Game.countdownSeconds <= 15) { timerEl.classList.add('warning'); timerEl.classList.remove('danger'); }
                 if (Game.countdownSeconds <= 0) { clearCountdown(); autoConfirmAction(); }
             }, 1000);
         }
@@ -2016,8 +2018,8 @@
             Game.gameEnded = true; clearCountdown();
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
-            $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
-            const deadPlayers = newlyDead.map(r => ({ ...r, playerObj: Game.players.find(p => p.name === r.name) })).filter(d => d.playerObj);
+            $('btn-back-room').style.display = (Game.mode === 'room' && Game.isHost) ? 'block' : 'none';
+            const deadPlayers = newlyDead.map(r => ({ ...r, playerObj: Game.players.find(p => (r.id !== undefined ? p.id === r.id : p.name === r.name)) })).filter(d => d.playerObj);
             const byIdentity = {}; deadPlayers.forEach(d => { if (!byIdentity[d.identity]) byIdentity[d.identity] = []; byIdentity[d.identity].push(d); });
             const idxOf = (d) => Game.players.findIndex(p => (d.id !== undefined ? p.id === d.id : p.name === d.name));
             let winners = []; const identities = Object.keys(byIdentity);
@@ -2039,7 +2041,7 @@
             Game.gameEnded = true; clearCountdown();
             if (Game._dayAutoTimer) { clearTimeout(Game._dayAutoTimer); Game._dayAutoTimer = null; }
             if (Game._dayAutoCountdown) { clearInterval(Game._dayAutoCountdown); Game._dayAutoCountdown = null; }
-            $('btn-back-room').style.display = (Game.mode === 'room') ? 'block' : 'none';
+            $('btn-back-room').style.display = (Game.mode === 'room' && Game.isHost) ? 'block' : 'none';
             showScreen('screen-end');
             if (winner) { const isMe = winner.id === Game.myId; $('winner-title').textContent = isMe ? '🎉 你赢了！' : `${winner.name} 获胜！`; $('winner-desc').textContent = ''; }
             else { $('winner-title').textContent = '💀 无人生还'; $('winner-desc').textContent = '所有玩家都已死亡'; }
