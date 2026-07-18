@@ -57,6 +57,7 @@ function getRoomPublic(room) {
     players: room.players.map(p => ({ id: p.id, name: p.name, isAI: p.isAI })),
     host: room.host,
     maxPlayers: room.maxPlayers,
+    mode: room.mode,
     status: room.status,
     playerCount: room.players.length
   };
@@ -186,6 +187,15 @@ io.on('connection', (socket) => {
 
   socket.on('leave_room', () => {
     removeFromRoom(socket);
+  });
+
+  // 等待阶段房主切换房间模式（普通/狼刀博弈），同步给房间内其他玩家
+  socket.on('set_room_mode', (payload) => {
+    const { code, mode } = payload || {};
+    const room = rooms.get(code);
+    if (!room || room.host !== socket.id || room.status !== 'waiting') return;
+    room.mode = mode === 'wolf' ? 'wolf' : 'normal';
+    socket.to(code).emit('room_mode_changed', { mode: room.mode });
   });
 
   socket.on('start_game', (payload) => {
