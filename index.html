@@ -1049,7 +1049,8 @@
                 const div = document.createElement('div');
                 div.className = `player-item ${!p.alive ? 'dead' : ''} ${isCurrent ? 'current' : ''} ${isNewlyDead ? 'newly-dead' : ''}`;
                 let badges = '';
-                if (selfInfo) {
+                // 特殊能力使用情况（双刀/双赌/反弹/转变）仅自己可见——狼刀博弈模式下身份虽公开，但双刀使用情况属于隐私
+                if (isMe && !Game.isLocalMultiplayer) {
                     if (p.identity === 'wolf' && p.usedDoubleKnife) badges += '<span class="special-badge badge-double-knife">双刀已用</span>';
                     if (p.identity === 'knight' && p.usedDoubleBet) badges += '<span class="special-badge badge-double-bet">双赌已用</span>';
                     if (p.identity === 'magician' && p.hasUsedBounce) badges += '<span class="special-badge badge-bounce-used">反弹已用</span>';
