@@ -45,6 +45,12 @@ function cleanName(s) {
   return n || '玩家';
 }
 
+// 人数校验：仅允许 3-5 人，防止恶意参数导致死循环或内存耗尽
+function sanitizeMaxPlayers(n) {
+  const v = parseInt(n, 10);
+  return (Number.isInteger(v) && v >= 3 && v <= 5) ? v : null;
+}
+
 function getRoomPublic(room) {
   return {
     code: room.code,
@@ -104,6 +110,11 @@ function removeFromRoom(socket) {
   const player = room.players[idx];
   room.players.splice(idx, 1);
   socket.leave(code);
+  // 对局中离开的玩家由 AI 托管：登记其 gameId，允许房主代发行动（否则托管行动会被反伪造校验拦截）
+  if (room.status === 'playing' && player.gameId) {
+    if (!room.delegatedAI) room.delegatedAI = {};
+    room.delegatedAI[player.gameId] = true;
+  }
   socket.to(code).emit('player_left', { playerId: player.id, room: getRoomPublic(room) });
   if (room.players.filter(p => !p.isAI).length === 0) {
     rooms.delete(code);
@@ -125,19 +136,22 @@ io.on('connection', (socket) => {
   onlineCount++;
   io.emit('online_count', onlineCount);
 
-  socket.on('create_room', ({ name, maxPlayers, mode }) => {
+  socket.on('create_room', (payload) => {
+    let { name, maxPlayers, mode } = payload || {};
     const now = Date.now();
     if (socket.lastRoomCreate && now - socket.lastRoomCreate < 3000) { socket.emit('error', { message: '操作太频繁，请稍后再试' }); return; }
     if (rooms.size > 5000) { socket.emit('error', { message: '服务器繁忙，请稍后再试' }); return; }
+    const mp = sanitizeMaxPlayers(maxPlayers === undefined ? 4 : maxPlayers);
+    if (!mp) { socket.emit('error', { message: '人数参数无效' }); return; }
     socket.lastRoomCreate = now;
     removeFromRoom(socket);
     name = cleanName(name);
     socket.playerName = name;
     const code = generateRoomCode();
     const room = {
-      code, host: socket.id, maxPlayers: maxPlayers || 4, mode: mode || 'normal',
+      code, host: socket.id, maxPlayers: mp, mode: mode === 'wolf' ? 'wolf' : 'normal',
       players: [{ id: socket.id, name, isAI: false, socketId: socket.id }],
-      status: 'waiting', gameState: null
+      status: 'waiting', gameState: null, createdAt: Date.now()
     };
     rooms.set(code, room);
     socket.join(code);
@@ -145,8 +159,9 @@ io.on('connection', (socket) => {
     socket.emit('room_created', { code, room: getRoomPublic(room) });
   });
 
-  socket.on('join_room', ({ code, name }) => {
-    code = (code || '').trim().toUpperCase();
+  socket.on('join_room', (payload) => {
+    let { code, name } = payload || {};
+    code = String(code || '').trim().toUpperCase();
     const room = rooms.get(code);
     if (!room) { socket.emit('error', { message: '房间不存在' }); return; }
     // 重复加入（双击/重发）：直接恢复，不产生重复玩家
@@ -172,14 +187,22 @@ io.on('connection', (socket) => {
     removeFromRoom(socket);
   });
 
-  socket.on('start_game', ({ code }) => {
+  socket.on('start_game', (payload) => {
+    const { code } = payload || {};
     const room = rooms.get(code);
     if (!room || room.host !== socket.id || room.status === 'playing') return;
     startRoomGame(room);
   });
 
   // 匹配：服务器端统一 5 秒定时器，超时 AI 补位
-  socket.on('join_matchmaking', ({ name, maxPlayers, mode }) => {
+  socket.on('join_matchmaking', (payload) => {
+    let { name, maxPlayers, mode } = payload || {};
+    const mp = sanitizeMaxPlayers(maxPlayers);
+    if (!mp) { socket.emit('error', { message: '人数参数无效' }); return; }
+    maxPlayers = mp;
+    mode = mode === 'wolf' ? 'wolf' : 'normal';
+    // 匹配前先退出可能所在的房间，避免跨房间消息串扰
+    removeFromRoom(socket);
     name = cleanName(name);
     socket.playerName = name;
     const key = `${maxPlayers}-${mode}`;
@@ -196,9 +219,9 @@ io.on('connection', (socket) => {
     const createMatchedRoom = (matched) => {
       const code = generateRoomCode();
       const room = {
-        code, host: matched[0].id, maxPlayers, mode: mode || 'normal',
+        code, host: matched[0].id, maxPlayers, mode,
         players: matched.map((s, i) => ({ id: s.id, name: s.playerName || `玩家${i + 1}`, isAI: false, socketId: s.id })),
-        status: 'waiting', gameState: null
+        status: 'waiting', gameState: null, createdAt: Date.now()
       };
       // 人不够时服务器直接补满 AI，保证各端名单一致
       fillRoomWithAI(room);
@@ -257,20 +280,25 @@ io.on('connection', (socket) => {
   });
 
   // 行动转发（除发送者外的房间内成员）：校验房间归属与操作者身份，防伪造
-  socket.on('player_action', ({ roomCode, actionType, playerId, data }) => {
-    if (!roomCode) return;
+  socket.on('player_action', (payload) => {
+    const { roomCode, actionType, playerId, data } = payload || {};
+    if (!roomCode || typeof playerId !== 'string') return;
     const room = rooms.get(roomCode);
     if (!room || socket.roomCode !== roomCode || !room.gameOf) return;
     const myGameId = room.gameOf[socket.id];
     if (!myGameId) return;
     const isSelf = playerId === myGameId;
-    const isHostForAI = room.host === socket.id && room.players.some(p => p.gameId === playerId && p.isAI);
+    // 房主可代发：房间内 AI，或对局中掉线/退出后由 AI 托管的玩家
+    const isHostForAI = room.host === socket.id &&
+      (room.players.some(p => p.gameId === playerId && p.isAI) ||
+       !!(room.delegatedAI && room.delegatedAI[playerId]));
     if (!isSelf && !isHostForAI) return;
     socket.to(roomCode).emit('player_action', { from: socket.id, action: actionType, data: { actionType, playerId, data } });
   });
 
   // 房主请求某玩家重发行动（消息丢失兜底）
-  socket.on('request_action', ({ roomCode, playerId }) => {
+  socket.on('request_action', (payload) => {
+    const { roomCode, playerId } = payload || {};
     const room = rooms.get(roomCode);
     if (!room || room.host !== socket.id) return;
     io.to(roomCode).emit('request_action', { playerId });
@@ -278,25 +306,32 @@ io.on('connection', (socket) => {
 
   // 白天结果广播（含权威存活状态，直接透传整个负载）
   // 注意：用 socket.to 排除发送者——房主已在本地结算并展示，回声会覆盖其"新死亡"数据导致误报平安夜
-  socket.on('broadcast_day_result', ({ roomCode, ...rest }) => {
+  socket.on('broadcast_day_result', (payload) => {
+    const { roomCode, ...rest } = payload || {};
     const room = rooms.get(roomCode);
     if (!room || room.host !== socket.id) return; // 仅房主可广播白天结果
     socket.to(roomCode).emit('day_result', rest);
   });
 
   // 一局结束后返回房间：房间重新开放等待，移除AI，全员回到等待界面
-  socket.on('return_to_room', ({ code }) => {
+  socket.on('return_to_room', (payload) => {
+    const { code } = payload || {};
     const room = rooms.get(code);
     if (!room) return;
-    if (!room.players.some(p => p.socketId === socket.id)) return;
+    // 仅房主可把房间带回等待状态，防止对局中被其他成员恶意重置
+    if (room.host !== socket.id) return;
     room.status = 'waiting';
+    room.gameOf = null; // 旧对局的行动通行证作废
+    room.delegatedAI = {};
+    room.createdAt = Date.now(); // 刷新闲置计时
     room.players = room.players.filter(p => !p.isAI);
     room.players.forEach(p => { delete p.gameId; });
     io.to(code).emit('room_reset', { room: getRoomPublic(room) });
   });
 
   // 夜晚开始等状态同步（透传）
-  socket.on('sync_game_state', ({ roomCode, state }) => {
+  socket.on('sync_game_state', (payload) => {
+    const { roomCode, state } = payload || {};
     const room = rooms.get(roomCode);
     if (!room || room.host !== socket.id) return; // 仅房主可同步状态
     socket.to(roomCode).emit('game_state_update', state);
@@ -320,6 +355,22 @@ io.on('connection', (socket) => {
     }
     removeFromRoom(socket);
   });
+});
+
+// 定期清理闲置房间：等待中且超过30分钟未活动的房间直接解散
+setInterval(() => {
+  const now = Date.now();
+  rooms.forEach((room, code) => {
+    if (room.status === 'waiting' && now - (room.createdAt || 0) > 30 * 60 * 1000) {
+      io.to(code).emit('error', { message: '房间长时间未开始，已解散' });
+      rooms.delete(code);
+    }
+  });
+}, 10 * 60 * 1000);
+
+// 兜底：单条消息处理出错不应拖垮整个服务器
+process.on('uncaughtException', (err) => {
+  console.error('未捕获异常（已拦截，服务器继续运行）:', err);
 });
 
 const PORT = process.env.PORT || 3000;
